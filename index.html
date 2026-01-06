@@ -3,14 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <title>Student Exam</title>
+
 <style>
-body{font-family:Arial;background:#f4f6f8;padding:20px}
-.container{max-width:800px;margin:auto;background:#fff;padding:25px;border-radius:6px}
+body{
+  font-family:Arial;
+  background:#f4f6f8;
+  padding:20px;
+}
+.container{
+  max-width:800px;
+  margin:auto;
+  background:#fff;
+  padding:25px;
+  border-radius:6px;
+}
 .question{margin-bottom:20px}
 .correct{color:green;font-weight:bold}
 .wrong{color:red;font-weight:bold}
-.result{background:#eef3ff;padding:15px;margin-top:20px;border-radius:4px}
+.explanation{
+  margin-top:6px;
+  font-size:14px;
+  background:#f9f9f9;
+  padding:8px;
+  border-left:4px solid #0275d8;
+}
+.result{
+  background:#eef3ff;
+  padding:15px;
+  margin-top:20px;
+  border-radius:4px;
+}
 .hidden{display:none}
+button{padding:8px 14px}
 </style>
 </head>
 
@@ -42,10 +66,14 @@ body{font-family:Arial;background:#f4f6f8;padding:20px}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, addDoc, collection
+  getFirestore,
+  doc,
+  getDoc,
+  addDoc,
+  collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 🔥 FIREBASE CONFIG */
+/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -58,11 +86,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* LOAD EXAM */
 const examId = new URLSearchParams(location.search).get("exam");
-const snap = await getDoc(doc(db,"exams",examId));
+if(!examId){
+  document.body.innerHTML = "Invalid exam link";
+  throw "";
+}
 
+const snap = await getDoc(doc(db,"exams",examId));
 if(!snap.exists()){
-  document.body.innerHTML="Invalid exam link";
+  document.body.innerHTML = "Exam not found";
   throw "";
 }
 
@@ -80,20 +113,21 @@ window.startExam = function(){
     alert("Name required");
     return;
   }
+
   document.getElementById("nameBox").classList.add("hidden");
   document.getElementById("examBox").classList.remove("hidden");
 
   exam.questions.forEach((q,i)=>{
-    let html=`<div class="question" data-id="${q.id}">
+    let html = `<div class="question" data-id="${q.id}">
       <p>${i+1}. ${q.question}</p>`;
     q.options.forEach((opt,idx)=>{
-      html+=`
+      html += `
         <label>
           <input type="radio" name="${q.id}" value="${idx}"> ${opt}
         </label><br>`;
     });
-    html+=`</div>`;
-    form.innerHTML+=html;
+    html += `</div>`;
+    form.innerHTML += html;
   });
 };
 
@@ -107,10 +141,6 @@ window.submitExam = async function(){
     const box = document.querySelector(`[data-id="${q.id}"]`);
     const labels = box.querySelectorAll("label");
     const sel = box.querySelector("input:checked");
-
-    // remove old explanation if any
-    let oldExp = box.querySelector(".explanation");
-    if(oldExp) oldExp.remove();
 
     labels.forEach((l,i)=>{
       if(i === q.correct){
@@ -126,17 +156,11 @@ window.submitExam = async function(){
       }
     }
 
-    // 🔥 SHOW EXPLANATION
     if(q.explanation){
-      const expDiv = document.createElement("div");
-      expDiv.className = "explanation";
-      expDiv.style.marginTop = "6px";
-      expDiv.style.fontSize = "14px";
-      expDiv.style.background = "#f9f9f9";
-      expDiv.style.padding = "8px";
-      expDiv.style.borderLeft = "4px solid #0275d8";
-      expDiv.innerHTML = `<b>Explanation:</b> ${q.explanation}`;
-      box.appendChild(expDiv);
+      const exp = document.createElement("div");
+      exp.className = "explanation";
+      exp.innerHTML = `<b>Explanation:</b> ${q.explanation}`;
+      box.appendChild(exp);
     }
   });
 
@@ -155,17 +179,6 @@ window.submitExam = async function(){
     time: new Date(),
     link: location.href
   });
-
-  document.getElementById("resultBox").innerHTML = `
-    <h3>Result</h3>
-    Name: <b>${studentName}</b><br>
-    Total: ${total}<br>
-    Correct: ${correct}<br>
-    Wrong: ${wrong}<br>
-    <b>Score: ${percent}%</b>
-  `;
-};
-
 
   document.getElementById("resultBox").innerHTML = `
     <h3>Result</h3>

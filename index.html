@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MCQ Exam</title>
+<style>
+body{font-family:Arial;background:#f4f6f8;padding:20px}
+.container{max-width:800px;margin:auto;background:#fff;padding:25px;border-radius:6px}
+.question{margin-bottom:20px}
+.result{background:#eef3ff;padding:15px;margin-top:20px}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h2 id="title"></h2>
+<p><b>Date:</b> <span id="date"></span></p>
+
+<form id="form"></form>
+<button onclick="submitExam()">Submit</button>
+
+<div class="result" id="result"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, addDoc, collection
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* 🔥 SAME FIREBASE CONFIG */
+const firebaseConfig = {
+  apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
+  authDomain: "exam-planner-61152.firebaseapp.com",
+  projectId: "exam-planner-61152",
+  storageBucket: "exam-planner-61152.firebasestorage.app",
+  messagingSenderId: "686056934046",
+  appId: "1:686056934046:web:751e7bdc6c723bb833898f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* LOAD EXAM */
+const examId = new URLSearchParams(location.search).get("exam");
+const snap = await getDoc(doc(db,"exams",examId));
+if(!snap.exists()){
+  document.body.innerHTML="Invalid exam link";
+  throw "";
+}
+
+const exam = snap.data();
+title.innerText = exam.title;
+date.innerText = exam.date;
+
+exam.questions.forEach((q,i)=>{
+  let html=`<div class="question">
+  <p>${i+1}. ${q.question}</p>`;
+  q.options.forEach((o,idx)=>{
+    html+=`<label>
+      <input type="radio" name="${q.id}" value="${idx}"> ${o}
+    </label><br>`;
+  });
+  html+=`</div>`;
+  form.innerHTML+=html;
+});
+
+/* SUBMIT EXAM */
+window.submitExam = async function(){
+  let correct=0;
+  exam.questions.forEach(q=>{
+    const sel=document.querySelector(\`input[name="\${q.id}"]:checked\`);
+    if(sel && +sel.value===q.correct) correct++;
+  });
+
+  const total=exam.questions.length;
+  const percent=((correct/total)*100).toFixed(2);
+
+  await addDoc(collection(db,"results"),{
+    examId,
+    title: exam.title,
+    correct, total, percent,
+    time: new Date(),
+    link: location.href
+  });
+
+  result.innerHTML=\`
+    <b>Result</b><br>
+    Score: \${correct}/\${total} (\${percent}%)
+  \`;
+};
+</script>
+</body>
+</html>

@@ -2,65 +2,47 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Admin Panel</title>
+<title>Student Exam</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body{font-family:Arial;background:#f2f4f7;margin:0;padding:12px}
-.container{max-width:1100px;margin:auto;background:#fff;padding:16px;border-radius:6px}
-input,textarea{width:100%;padding:10px;margin:6px 0;font-size:15px}
-button{padding:10px;width:100%;margin-top:8px;border:none;border-radius:4px;font-size:15px;cursor:pointer}
-.primary{background:#0275d8;color:#fff}
-.danger{background:#d9534f;color:#fff}
-.copy{background:#5cb85c;color:#fff}
-.gray{background:#6c757d;color:#fff}
-.box{background:#eef3ff;padding:12px;margin-top:12px;border-radius:4px}
-.card{background:#f9f9f9;padding:12px;margin-bottom:12px;border-left:4px solid #0275d8}
-.question{background:#fff;padding:8px;margin-top:6px;border-radius:4px;font-size:14px}
-.hidden{display:none}
+body{font-family:Arial;background:#f4f6f8;margin:0;padding:12px}
+.container{max-width:900px;margin:auto;background:#fff;padding:16px;border-radius:6px}
+.question{margin-bottom:16px}
 .correct{color:green;font-weight:bold}
 .wrong{color:red;font-weight:bold}
-.skip{color:#999}
+.explanation{background:#f9f9f9;padding:8px;margin-top:6px;border-left:4px solid #0275d8}
+.result{background:#eef3ff;padding:12px;margin-top:20px;border-radius:4px}
+.hidden{display:none}
+button{padding:10px;font-size:16px;width:100%;border:none;border-radius:4px;background:#0275d8;color:#fff}
+.timer{font-weight:bold;margin-bottom:10px}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<h2>Admin Panel</h2>
+<div id="nameBox">
+  <h3>Enter Your Name</h3>
+  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
+  <button onclick="startExam()">Start Exam</button>
+</div>
 
-<h3>Create Exam</h3>
-<input id="title" placeholder="Exam Title">
-<input id="date" placeholder="Exam Date">
-
-<label><input type="checkbox" id="enableTimer"> Enable Timer</label>
-<input id="duration" class="hidden" placeholder="Duration (minutes)">
-
-<textarea id="questions" placeholder="Paste MCQ JSON"></textarea>
-<button class="primary" onclick="createExam()">Create Exam</button>
-
-<div class="box" id="linkBox"></div>
-
-<hr>
-
-<h3>Exam Manager</h3>
-<button class="primary" onclick="toggleExams()">Load Exams</button>
-<div class="box hidden" id="examBox"></div>
-
-<hr>
-
-<h3>Exam Attempts</h3>
-<button class="primary" onclick="toggleAttempts()">Load History</button>
-<button class="danger" onclick="resetAttempts()">Reset History</button>
-<div class="box hidden" id="historyBox"></div>
+<div id="examBox" class="hidden">
+  <h2 id="examTitle"></h2>
+  <p>Date: <span id="examDate"></span></p>
+  <div id="timerBox" class="timer hidden"></div>
+  <form id="examForm"></form>
+  <button id="submitBtn" onclick="submitExam()">Submit</button>
+  <div class="result" id="resultBox"></div>
+</div>
 
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, getDocs,
-  query, orderBy, deleteDoc, doc, getDoc
+  getFirestore, doc, getDoc, addDoc, updateDoc, collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -75,152 +57,105 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-enableTimer.onchange=()=>duration.classList.toggle("hidden",!enableTimer.checked);
+const examId=new URLSearchParams(location.search).get("exam");
+const snap=await getDoc(doc(db,"exams",examId));
+const exam=snap.data();
 
-let examsLoaded=false, attemptsLoaded=false;
+examTitle.innerText=exam.title;
+examDate.innerText=exam.date;
 
-window.createExam = async ()=>{
-  if(!title.value||!date.value||!questions.value) return alert("All fields required");
-  if(enableTimer.checked && !duration.value) return alert("Duration required");
+let startTime, attemptRef, timerInt, remaining;
+const form=examForm;
 
-  let qs;
-  try{qs=JSON.parse(questions.value)}catch{return alert("Invalid JSON")}
+window.startExam=async ()=>{
+  const name=studentName.value.trim();
+  if(!name) return alert("Name required");
 
-  const ref = await addDoc(collection(db,"exams"),{
-    title:title.value,
-    date:date.value,
-    enableTimer:enableTimer.checked,
-    durationMin:enableTimer.checked?Number(duration.value):null,
-    questions:qs,
-    createdAt:new Date()
+  nameBox.classList.add("hidden");
+  examBox.classList.remove("hidden");
+  startTime=Date.now();
+
+  attemptRef=await addDoc(collection(db,"attempts"),{
+    examTitle:exam.title,
+    student:name,
+    startTime:new Date(),
+    status:"IN_PROGRESS"
   });
 
-  const base=location.origin+location.pathname.replace(/\/[^\/]*$/,"/");
-  const link=`${base}index.html?exam=${ref.id}`;
-
-  linkBox.innerHTML=`
-    <b>Exam Created</b><br>
-    <input id="newLink" value="${link}" readonly>
-    <button class="copy" onclick="copy('newLink')">Copy Link</button>
-  `;
-};
-
-window.copy=id=>{
-  const i=document.getElementById(id);
-  i.select();document.execCommand("copy");
-};
-
-window.toggleExams=async ()=>{
-  examBox.classList.toggle("hidden");
-  if(examsLoaded) return;
-  examsLoaded=true;
-
-  const snap=await getDocs(collection(db,"exams"));
-  let html="";
-  snap.forEach(d=>{
-    const e=d.data();
-    const link=location.origin+location.pathname.replace(/\/[^\/]*$/,"/")+`index.html?exam=${d.id}`;
-    html+=`
-      <div class="card">
-        <b>${e.title}</b><br>
-        Date: ${e.date}<br>
-        Timer: ${e.enableTimer?e.durationMin+" min":"Disabled"}<br><br>
-
-        <input id="link_${d.id}" value="${link}" readonly>
-        <button class="copy" onclick="copy('link_${d.id}')">Copy Link</button>
-
-        <button class="primary" onclick="loadQuestions('${d.id}')">View Questions</button>
-        <button class="danger" onclick="deleteExam('${d.id}')">Delete Exam</button>
-
-        <div id="q_${d.id}" class="hidden"></div>
-      </div>
-    `;
-  });
-  examBox.innerHTML=html||"No exams found.";
-};
-
-window.loadQuestions=async id=>{
-  const box=document.getElementById("q_"+id);
-  box.classList.toggle("hidden");
-  if(box.innerHTML) return;
-
-  const snap=await getDoc(doc(db,"exams",id));
-  const e=snap.data();
-  let qhtml="";
-  e.questions.forEach((q,i)=>{
-    qhtml+=`
-      <div class="question">
+  exam.questions.forEach((q,i)=>{
+    form.innerHTML+=`
+      <div class="question" data-i="${i}">
         ${i+1}. ${q.question}<br>
-        ${q.options.map((o,idx)=>`${idx===q.correct?"<span class='correct'>✔ ":""}${o}`).join("<br>")}
-        ${q.explanation?`<div><b>Explanation:</b> ${q.explanation}</div>`:""}
-      </div>`;
-  });
-  box.innerHTML=qhtml;
-};
-
-window.deleteExam=async id=>{
-  if(!confirm("Delete exam?")) return;
-  await deleteDoc(doc(db,"exams",id));
-  examsLoaded=false;
-  examBox.innerHTML="";
-};
-
-window.toggleAttempts=async ()=>{
-  historyBox.classList.toggle("hidden");
-  if(attemptsLoaded) return;
-  attemptsLoaded=true;
-
-  const q=query(collection(db,"attempts"),orderBy("startTime","desc"));
-  const snap=await getDocs(q);
-  let html="";
-  snap.forEach(d=>{
-    const a=d.data();
-    html+=`
-      <div class="card">
-        <b>${a.examTitle}</b><br>
-        Student: ${a.student}<br>
-        Correct: ${a.correct} |
-        Wrong: ${a.wrong} |
-        Skipped: ${a.skipped}<br>
-        Time: ${Math.floor(a.durationSec/60)}m ${a.durationSec%60}s<br>
-        <button class="gray" onclick="viewAttempt('${d.id}')">View Attempt</button>
-        <div id="a_${d.id}" class="hidden"></div>
+        ${q.options.map((o,idx)=>`
+          <label><input type="radio" name="q${i}" value="${idx}"> ${o}</label>
+        `).join("")}
       </div>
     `;
   });
-  historyBox.innerHTML=html||"No history found.";
+
+  if(exam.enableTimer){
+    remaining=exam.durationMin*60;
+    timerBox.classList.remove("hidden");
+    timerInt=setInterval(()=>{
+      remaining--;
+      timerBox.innerText=`⏱ ${Math.floor(remaining/60)}:${(remaining%60).toString().padStart(2,"0")}`;
+      if(remaining<=0){clearInterval(timerInt);submitExam();}
+    },1000);
+  }
 };
 
-window.viewAttempt=async id=>{
-  const box=document.getElementById("a_"+id);
-  box.classList.toggle("hidden");
-  if(box.innerHTML) return;
+window.submitExam=async ()=>{
+  submitBtn.disabled=true;
+  if(timerInt) clearInterval(timerInt);
 
-  const snap=await getDoc(doc(db,"attempts",id));
-  const a=snap.data();
-  let h="";
-  a.answers.forEach((x,i)=>{
-    h+=`
-      <div class="question">
-        ${i+1}. ${x.question}<br>
-        ${x.options.map((o,idx)=>{
-          if(idx===x.correct) return `<span class="correct">✔ ${o}</span>`;
-          if(idx===x.selected) return `<span class="wrong">✖ ${o}</span>`;
-          return o;
-        }).join("<br>")}
-      </div>
-    `;
+  let correct=0, wrong=0, skipped=0;
+  let answers=[];
+
+  exam.questions.forEach((q,i)=>{
+    const box=document.querySelector(`[data-i="${i}"]`);
+    const sel=box.querySelector("input:checked");
+    let selected=sel?Number(sel.value):null;
+
+    if(selected===null) skipped++;
+    else if(selected===q.correct) correct++;
+    else wrong++;
+
+    answers.push({
+      question:q.question,
+      options:q.options,
+      correct:q.correct,
+      selected
+    });
+
+    box.querySelectorAll("label").forEach((l,idx)=>{
+      if(idx===q.correct) l.classList.add("correct");
+      if(idx===selected && selected!==q.correct) l.classList.add("wrong");
+    });
+
+    if(q.explanation){
+      box.innerHTML+=`<div class="explanation">${q.explanation}</div>`;
+    }
   });
-  box.innerHTML=h;
-};
 
-window.resetAttempts=async ()=>{
-  if(!confirm("Delete all attempts?")) return;
-  const snap=await getDocs(collection(db,"attempts"));
-  for(const d of snap.docs) await deleteDoc(doc(db,"attempts",d.id));
-  attemptsLoaded=false;
-  historyBox.innerHTML="";
+  const durationSec=Math.floor((Date.now()-startTime)/1000);
+
+  await updateDoc(attemptRef,{
+    status:"COMPLETED",
+    correct,wrong,skipped,
+    total:exam.questions.length,
+    durationSec,
+    answers
+  });
+
+  resultBox.innerHTML=`
+    <h3>Result</h3>
+    Correct: ${correct}<br>
+    Wrong: ${wrong}<br>
+    Skipped: ${skipped}<br>
+    Time: ${Math.floor(durationSec/60)}m ${durationSec%60}s
+  `;
 };
 </script>
 </body>
 </html>
+

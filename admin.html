@@ -179,29 +179,85 @@ window.toggleHistory = async ()=>{
   historyBox.classList.toggle("hidden");
   if(historyBox.classList.contains("hidden")) return;
 
-  const snap=await getDocs(query(collection(db,"attempts"),orderBy("startTime","desc")));
-  historyBox.innerHTML="";
+  const snap = await getDocs(
+    query(collection(db,"attempts"), orderBy("startTime","desc"))
+  );
+
+  historyBox.innerHTML = "";
 
   snap.forEach(d=>{
-    const a=d.data();
-    const link=`${base}index.html?exam=${a.examId}`;
-    const card=document.createElement("div");
-    card.className="card";
-    card.innerHTML=`
-      <b>${a.examTitle}</b><br>
-      Student: ${a.student}<br>
-      Status: ${a.status}<br>
-      Link: <small>${link}</small>
-      <div class="flex">
-        <button class="copy" onclick="navigator.clipboard.writeText('${link}')">Copy Exam Link</button>
-        <button class="primary" onclick="viewAttempt('${d.id}','${a.examId}')">View Attempt</button>
-        <button class="danger" onclick="deleteAttempt('${d.id}')">Delete</button>
+    const a = d.data();
+
+    const total = a.total ?? 0;
+    const correct = a.correct ?? 0;
+    const wrong = a.wrong ?? 0;
+    const skipped = a.skipped ?? (total - correct - wrong);
+    const percent = a.percent ?? (
+      total ? ((correct/total)*100).toFixed(1) : "—"
+    );
+
+    const timeText = a.durationSec
+      ? `${Math.floor(a.durationSec/60)}m ${a.durationSec%60}s`
+      : "—";
+
+    const statusBadge = a.status==="COMPLETED"
+      ? `<span style="color:#28a745;font-weight:bold">COMPLETED</span>`
+      : `<span style="color:#ffc107;font-weight:bold">IN PROGRESS</span>`;
+
+    const link = `${base}index.html?exam=${a.examId}`;
+
+    historyBox.innerHTML += `
+      <div class="card">
+        <b>${a.examTitle}</b><br>
+        Student: <b>${a.student}</b><br>
+        Status: ${statusBadge}<br>
+        <small>${link}</small>
+
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <span style="background:#d4edda;color:#155724;padding:4px 8px;border-radius:4px">
+            ✔ Correct: ${a.status==="COMPLETED" ? correct : "—"}
+          </span>
+
+          <span style="background:#f8d7da;color:#721c24;padding:4px 8px;border-radius:4px">
+            ✘ Wrong: ${a.status==="COMPLETED" ? wrong : "—"}
+          </span>
+
+          <span style="background:#e2e3e5;color:#383d41;padding:4px 8px;border-radius:4px">
+            ⏭ Skipped: ${a.status==="COMPLETED" ? skipped : "—"}
+          </span>
+
+          <span style="background:#d1ecf1;color:#0c5460;padding:4px 8px;border-radius:4px">
+            % ${a.status==="COMPLETED" ? percent : "—"}
+          </span>
+
+          <span style="background:#fff3cd;color:#856404;padding:4px 8px;border-radius:4px">
+            ⏱ ${a.status==="COMPLETED" ? timeText : "—"}
+          </span>
+        </div>
+
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="copy" onclick="navigator.clipboard.writeText('${link}')">
+            Copy Exam Link
+          </button>
+          <button class="primary" onclick="viewAttempt('${d.id}','${a.examId}')">
+            View Attempt
+          </button>
+          <button class="danger" onclick="deleteAttempt('${d.id}')">
+            Delete
+          </button>
+        </div>
+
+        <div id="a_${d.id}" class="hidden"></div>
       </div>
-      <div id="a_${d.id}" class="hidden"></div>
     `;
-    historyBox.appendChild(card);
   });
+
+  if(!snap.size){
+    historyBox.innerHTML = "<i>No history found</i>";
+  }
 };
+
+
 
 window.viewAttempt = async (attemptId,examId)=>{
   const box=document.getElementById("a_"+attemptId);

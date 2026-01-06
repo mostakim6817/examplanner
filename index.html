@@ -108,16 +108,35 @@ window.submitExam = async function(){
     const labels = box.querySelectorAll("label");
     const sel = box.querySelector("input:checked");
 
+    // remove old explanation if any
+    let oldExp = box.querySelector(".explanation");
+    if(oldExp) oldExp.remove();
+
     labels.forEach((l,i)=>{
-      if(i===q.correct) l.classList.add("correct");
+      if(i === q.correct){
+        l.classList.add("correct");
+      }
     });
 
     if(sel){
-      if(+sel.value===q.correct){
+      if(+sel.value === q.correct){
         correct++;
       }else{
         sel.parentElement.classList.add("wrong");
       }
+    }
+
+    // 🔥 SHOW EXPLANATION
+    if(q.explanation){
+      const expDiv = document.createElement("div");
+      expDiv.className = "explanation";
+      expDiv.style.marginTop = "6px";
+      expDiv.style.fontSize = "14px";
+      expDiv.style.background = "#f9f9f9";
+      expDiv.style.padding = "8px";
+      expDiv.style.borderLeft = "4px solid #0275d8";
+      expDiv.innerHTML = `<b>Explanation:</b> ${q.explanation}`;
+      box.appendChild(expDiv);
     }
   });
 
@@ -129,10 +148,24 @@ window.submitExam = async function(){
     examId,
     title: exam.title,
     student: studentName,
-    correct, total, wrong, percent,
+    correct,
+    total,
+    wrong,
+    percent,
     time: new Date(),
     link: location.href
   });
+
+  document.getElementById("resultBox").innerHTML = `
+    <h3>Result</h3>
+    Name: <b>${studentName}</b><br>
+    Total: ${total}<br>
+    Correct: ${correct}<br>
+    Wrong: ${wrong}<br>
+    <b>Score: ${percent}%</b>
+  `;
+};
+
 
   document.getElementById("resultBox").innerHTML = `
     <h3>Result</h3>

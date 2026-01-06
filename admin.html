@@ -258,31 +258,49 @@ window.toggleHistory = async ()=>{
 };
 
 
-
-window.viewAttempt = async (attemptId,examId)=>{
-  const box=document.getElementById("a_"+attemptId);
+window.viewAttempt = async (attemptId, examId) => {
+  const box = document.getElementById("attempt_" + attemptId);
   box.classList.toggle("hidden");
-  if(box.innerHTML) return;
+  if (box.innerHTML) return;
 
-  const attempt=(await getDoc(doc(db,"attempts",attemptId))).data();
-  const exam=(await getDoc(doc(db,"exams",examId))).data();
+  const attemptSnap = await getDoc(doc(db, "attempts", attemptId));
+  const examSnap = await getDoc(doc(db, "exams", examId));
 
-  exam.questions.forEach((q,i)=>{
-    const ua=attempt.answers?.[i]?.selected ?? null;
-    const div=document.createElement("div");
-    div.className="question";
-    div.innerHTML=`
-      <b>${i+1}. ${q.question}</b><br>
-      ${q.options.map((o,idx)=>{
-        if(idx===q.correct) return `<div class="correct">✔ ${o}</div>`;
-        if(idx===ua) return `<div class="wrong">✘ ${o}</div>`;
-        return `<div>${o}</div>`;
-      }).join("")}
-      ${ua===null?`<div class="wrong">Skipped</div>`:""}
-      ${q.explanation?`<div class="explanation">${q.explanation}</div>`:""}
-    `;
-    box.appendChild(div);
+  const attempt = attemptSnap.data();
+  const exam = examSnap.data();
+
+  let html = "";
+
+  exam.questions.forEach((q, i) => {
+    const ans = attempt.answers?.[i]; // ✅ FIX
+    const selected = ans ? ans.selected : null;
+
+    html += `<div class="question"><b>${i + 1}. ${q.question}</b><br>`;
+
+    q.options.forEach((o, idx) => {
+      if (idx === q.correct) {
+        html += `<div class="correct">✔ ${o}</div>`;
+      } else if (idx === selected) {
+        html += `<div class="wrong">✘ ${o}</div>`;
+      } else {
+        html += `<div>${o}</div>`;
+      }
+    });
+
+    if (selected === null) {
+      html += `<div class="wrong"><i>Skipped</i></div>`;
+    }
+
+    if (q.explanation) {
+      html += `<div class="explanation"><b>Explanation:</b> ${q.explanation}</div>`;
+    }
+
+    html += `</div>`;
   });
+
+  box.innerHTML = html;
+};
+
 };
 
 window.deleteAttempt = async id=>{

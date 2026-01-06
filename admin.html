@@ -14,13 +14,13 @@ button{padding:10px;width:100%;margin-top:8px;border:none;border-radius:4px;font
 .primary{background:#0275d8;color:#fff}
 .danger{background:#d9534f;color:#fff}
 .copy{background:#5cb85c;color:#fff}
-.gray{background:#6c757d;color:#fff}
 .box{background:#eef3ff;padding:12px;margin-top:12px;border-radius:4px}
 .card{background:#f9f9f9;padding:12px;margin-bottom:12px;border-left:4px solid #0275d8}
-.question{background:#fff;padding:8px;margin-top:6px;border-radius:4px;font-size:14px}
-.hidden{display:none}
+.question{background:#fff;padding:8px;margin-top:8px;border-radius:4px;font-size:14px}
 .correct{color:green;font-weight:bold}
 .wrong{color:red;font-weight:bold}
+.hidden{display:none}
+.explanation{margin-top:6px;background:#f1f1f1;padding:6px;border-left:4px solid #0275d8}
 </style>
 </head>
 
@@ -86,35 +86,36 @@ enableTimer.onchange = () => {
   duration.classList.toggle("hidden", !enableTimer.checked);
 };
 
-let examsLoaded = false;
-let attemptsLoaded = false;
+let examsLoaded=false, attemptsLoaded=false;
 
 /* CREATE EXAM */
 window.createExam = async () => {
   if(!title.value || !date.value || !questions.value){
-    alert("All fields required");
-    return;
+    alert("All fields required"); return;
   }
   if(enableTimer.checked && !duration.value){
-    alert("Duration required");
-    return;
+    alert("Duration required"); return;
   }
 
   let qs;
-  try{
-    qs = JSON.parse(questions.value);
-  }catch{
-    alert("Invalid JSON");
-    return;
+  try{ qs = JSON.parse(questions.value); }
+  catch{ alert("Invalid JSON"); return; }
+
+  if(!Array.isArray(qs)){ alert("Questions must be an array"); return; }
+
+  for(const q of qs){
+    if(!q.id || !q.question || !Array.isArray(q.options) || typeof q.correct!=="number"){
+      alert("Invalid question format"); return;
+    }
   }
 
   const ref = await addDoc(collection(db,"exams"),{
-    title: title.value,
-    date: date.value,
-    enableTimer: enableTimer.checked,
+    title:title.value,
+    date:date.value,
+    enableTimer:enableTimer.checked,
     durationMin: enableTimer.checked ? Number(duration.value) : null,
-    questions: qs,
-    createdAt: new Date()
+    questions:qs,
+    createdAt:new Date()
   });
 
   const base = location.origin + location.pathname.replace(/\/[^\/]*$/,"/");
@@ -127,28 +128,26 @@ window.createExam = async () => {
   `;
 };
 
-/* COPY LINK */
+/* COPY */
 window.copyLink = id => {
-  const i = document.getElementById(id);
-  i.select();
-  document.execCommand("copy");
+  navigator.clipboard.writeText(document.getElementById(id).value);
 };
 
-/* LOAD EXAMS (TOGGLE) */
+/* LOAD EXAMS */
 window.toggleExams = async () => {
   examBox.classList.toggle("hidden");
   if(examsLoaded) return;
-  examsLoaded = true;
+  examsLoaded=true;
 
   const snap = await getDocs(collection(db,"exams"));
-  let html = "";
+  let html="";
 
   snap.forEach(d=>{
-    const e = d.data();
+    const e=d.data();
     const link = location.origin + location.pathname.replace(/\/[^\/]*$/,"/")
       + `index.html?exam=${d.id}`;
 
-    html += `
+    html+=`
       <div class="card">
         <b>${e.title}</b><br>
         Date: ${e.date}<br>
@@ -156,10 +155,9 @@ window.toggleExams = async () => {
 
         <input id="link_${d.id}" value="${link}" readonly>
         <button class="copy" onclick="copyLink('link_${d.id}')">Copy Link</button>
-
-        <button class="primary" onclick="viewQuestions('${d.id}')">View Questions</button>
         <button class="danger" onclick="deleteExam('${d.id}')">Delete Exam</button>
 
+        <button class="primary" onclick="viewQuestions('${d.id}')">View Questions</button>
         <div id="q_${d.id}" class="hidden"></div>
       </div>
     `;
@@ -169,60 +167,63 @@ window.toggleExams = async () => {
 };
 
 /* VIEW QUESTIONS */
-window.viewQuestions = async (id) => {
-  const box = document.getElementById("q_"+id);
+window.viewQuestions = async id => {
+  const box=document.getElementById("q_"+id);
   box.classList.toggle("hidden");
   if(box.innerHTML) return;
 
   const snap = await getDoc(doc(db,"exams",id));
-  const e = snap.data();
+  const e=snap.data();
 
-  let qhtml = "";
+  let html="";
   e.questions.forEach((q,i)=>{
-    qhtml += `
+    html+=`
       <div class="question">
-        ${i+1}. ${q.question}<br>
-        ${q.options.map((o,idx)=>{
-          return idx===q.correct
-            ? `<span class="correct">✔ ${o}</span>`
-            : o;
-        }).join("<br>")}
-        ${q.explanation ? `<div><b>Explanation:</b> ${q.explanation}</div>` : ""}
+        <b>${i+1}. ${q.question}</b><br>
+        ${q.options.map((o,idx)=>
+          idx===q.correct
+          ? `<div class="correct">✔ ${o}</div>`
+          : `<div>${o}</div>`
+        ).join("")}
+        ${q.explanation ? `<div class="explanation"><b>Explanation:</b> ${q.explanation}</div>`:""}
       </div>
     `;
   });
-
-  box.innerHTML = qhtml;
+  box.innerHTML=html;
 };
 
 /* DELETE EXAM */
 window.deleteExam = async id => {
   if(!confirm("Delete exam?")) return;
   await deleteDoc(doc(db,"exams",id));
-  examsLoaded = false;
-  examBox.innerHTML = "";
+  examsLoaded=false;
+  examBox.innerHTML="";
 };
 
-/* LOAD ATTEMPTS (TOGGLE) */
+/* LOAD ATTEMPTS */
 window.toggleAttempts = async () => {
   historyBox.classList.toggle("hidden");
   if(attemptsLoaded) return;
-  attemptsLoaded = true;
+  attemptsLoaded=true;
 
-  const q = query(collection(db,"attempts"), orderBy("startTime","desc"));
-  const snap = await getDocs(q);
-  let html = "";
+  const q=query(collection(db,"attempts"),orderBy("startTime","desc"));
+  const snap=await getDocs(q);
+  let html="";
 
   snap.forEach(d=>{
-    const a = d.data();
-    html += `
+    const a=d.data();
+    html+=`
       <div class="card">
         <b>${a.examTitle}</b><br>
         Student: ${a.student}<br>
-        Correct: ${a.correct || 0},
-        Wrong: ${a.wrong || 0},
-        Skipped: ${a.skipped || 0}<br>
-        Time: ${Math.floor((a.durationSec||0)/60)}m ${(a.durationSec||0)%60}s
+        Correct: ${a.correct}, Wrong: ${a.wrong}, Skipped: ${a.skipped}<br>
+        Time: ${Math.floor((a.durationSec||0)/60)}m ${(a.durationSec||0)%60}s<br><br>
+
+        <button class="primary" onclick="viewAttempt('${d.id}','${a.examId}')">
+          View Attempt
+        </button>
+
+        <div id="attempt_${d.id}" class="hidden"></div>
       </div>
     `;
   });
@@ -230,15 +231,41 @@ window.toggleAttempts = async () => {
   historyBox.innerHTML = html || "No history found.";
 };
 
+/* VIEW ATTEMPT (FULL REVIEW) */
+window.viewAttempt = async (attemptId, examId) => {
+  const box=document.getElementById("attempt_"+attemptId);
+  box.classList.toggle("hidden");
+  if(box.innerHTML) return;
+
+  const attempt=(await getDoc(doc(db,"attempts",attemptId))).data();
+  const exam=(await getDoc(doc(db,"exams",examId))).data();
+
+  let html="";
+  exam.questions.forEach((q,i)=>{
+    const ua = attempt.answers?.[q.id];
+    html+=`<div class="question"><b>${i+1}. ${q.question}</b><br>`;
+    q.options.forEach((o,idx)=>{
+      if(idx===q.correct) html+=`<div class="correct">✔ ${o}</div>`;
+      else if(ua===idx) html+=`<div class="wrong">✘ ${o}</div>`;
+      else html+=`<div>${o}</div>`;
+    });
+    if(ua===null) html+=`<div class="wrong"><i>Skipped</i></div>`;
+    if(q.explanation) html+=`<div class="explanation"><b>Explanation:</b> ${q.explanation}</div>`;
+    html+=`</div>`;
+  });
+
+  box.innerHTML=html;
+};
+
 /* RESET ATTEMPTS */
 window.resetAttempts = async () => {
   if(!confirm("Delete all attempts?")) return;
-  const snap = await getDocs(collection(db,"attempts"));
+  const snap=await getDocs(collection(db,"attempts"));
   for(const d of snap.docs){
     await deleteDoc(doc(db,"attempts",d.id));
   }
-  attemptsLoaded = false;
-  historyBox.innerHTML = "";
+  attemptsLoaded=false;
+  historyBox.innerHTML="";
 };
 </script>
 

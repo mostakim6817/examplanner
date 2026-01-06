@@ -4,12 +4,14 @@
 <meta charset="UTF-8">
 <title>Student Exam</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
 body{font-family:Arial;background:#f4f6f8;margin:0;padding:12px}
 .container{max-width:900px;margin:auto;background:#fff;padding:16px;border-radius:6px}
 .question{margin-bottom:16px}
-.correct{color:green;font-weight:bold}
-.wrong{color:red;font-weight:bold}
+.option{display:block;margin:4px 0}
+.correct{color:#28a745;font-weight:bold}
+.wrong{color:#dc3545;font-weight:bold}
 .explanation{background:#f9f9f9;padding:8px;margin-top:6px;border-left:4px solid #0275d8}
 .result{background:#eef3ff;padding:12px;margin-top:20px;border-radius:4px}
 .hidden{display:none}
@@ -41,9 +43,11 @@ button{padding:10px;font-size:16px;width:100%;border:none;border-radius:4px;back
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, addDoc, updateDoc, collection } 
-from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore, doc, getDoc, addDoc, updateDoc, collection
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* FIREBASE */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -57,17 +61,16 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const examId = new URLSearchParams(location.search).get("exam");
-if(!examId){ document.body.innerHTML="Invalid exam link"; throw ""; }
-
 const snap = await getDoc(doc(db,"exams",examId));
-if(!snap.exists()){ document.body.innerHTML="Exam not found"; throw ""; }
-
 const exam = snap.data();
+
 examTitle.innerText = exam.title;
 examDate.innerText = exam.date;
 
-let attemptRef=null,startTime=null,timerInt=null,remaining=0;
+let startTime, attemptRef, timerInt, remaining;
+const form = examForm;
 
+/* START EXAM */
 window.startExam = async ()=>{
   const name = studentName.value.trim();
   if(!name) return alert("Name required");
@@ -80,75 +83,103 @@ window.startExam = async ()=>{
     examId,
     examTitle: exam.title,
     student: name,
-    status:"IN_PROGRESS",
-    startTime:new Date(),
-    correct:null, wrong:null, skipped:null, durationSec:null,
-    answers:[]
+    startTime: new Date(),
+    status: "IN_PROGRESS"
   });
 
   exam.questions.forEach((q,i)=>{
-    examForm.innerHTML+=`
-      <div class="question" data-i="${i}">
-        <b>${i+1}. ${q.question}</b><br>
-        ${q.options.map((o,idx)=>`
-          <label><input type="radio" name="q${i}" value="${idx}"> ${o}</label>
-        `).join("")}
-      </div>`;
+    const div = document.createElement("div");
+    div.className = "question";
+    div.dataset.index = i;
+
+    div.innerHTML = `
+      <b>${i+1}. ${q.question}</b><br>
+      ${q.options.map((o,idx)=>`
+        <label class="option">
+          <input type="radio" name="q${i}" value="${idx}"> ${o}
+        </label>
+      `).join("")}
+    `;
+    form.appendChild(div);
   });
 
   if(exam.enableTimer){
-    remaining=exam.durationMin*60;
+    remaining = exam.durationMin * 60;
     timerBox.classList.remove("hidden");
-    timerInt=setInterval(()=>{
+    timerInt = setInterval(()=>{
       remaining--;
-      timerBox.innerText=`⏱ ${Math.floor(remaining/60)}:${(remaining%60).toString().padStart(2,"0")}`;
-      if(remaining<=0){ clearInterval(timerInt); submitExam(); }
+      timerBox.innerText =
+        `⏱ ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")}`;
+      if(remaining<=0){
+        clearInterval(timerInt);
+        submitExam();
+      }
     },1000);
   }
 };
 
+/* SUBMIT */
 window.submitExam = async ()=>{
-  submitBtn.disabled=true;
+  submitBtn.disabled = true;
   if(timerInt) clearInterval(timerInt);
 
-  let correct=0,wrong=0,skipped=0,answers=[];
+  let correct=0, wrong=0, skipped=0;
+  const answers=[];
 
   exam.questions.forEach((q,i)=>{
-    const box=document.querySelector(`[data-i="${i}"]`);
-    const sel=box.querySelector("input:checked");
-    const selected=sel?Number(sel.value):null;
+    const box = document.querySelector(`[data-index="${i}"]`);
+    const radios = box.querySelectorAll("input[type=radio]");
+    let selected = null;
+
+    radios.forEach(r=>{
+      if(r.checked) selected = Number(r.value);
+      r.disabled = true;
+    });
 
     if(selected===null) skipped++;
     else if(selected===q.correct) correct++;
     else wrong++;
 
-    answers.push({question:q.question,options:q.options,correct:q.correct,selected});
+    answers.push({ selected });
 
-    box.querySelectorAll("label").forEach((l,idx)=>{
-      if(idx===q.correct) l.classList.add("correct");
-      if(idx===selected && selected!==q.correct) l.classList.add("wrong");
+    radios.forEach(r=>{
+      const idx = Number(r.value);
+      const label = r.parentElement;
+
+      if(idx === q.correct){
+        label.classList.add("correct");
+        label.innerHTML = "✔ " + label.textContent;
+      }
+      else if(idx === selected){
+        label.classList.add("wrong");
+        label.innerHTML = "✘ " + label.textContent;
+      }
     });
 
-    if(q.explanation) box.innerHTML+=`<div class="explanation">${q.explanation}</div>`;
+    if(q.explanation){
+      const exp = document.createElement("div");
+      exp.className="explanation";
+      exp.innerText = q.explanation;
+      box.appendChild(exp);
+    }
   });
 
-  const durationSec=Math.floor((Date.now()-startTime)/1000);
+  const durationSec = Math.floor((Date.now()-startTime)/1000);
 
   await updateDoc(attemptRef,{
     status:"COMPLETED",
-    correct,wrong,skipped,
-    total:exam.questions.length,
+    correct, wrong, skipped,
+    total: exam.questions.length,
     durationSec,
-    answers,
-    endTime:new Date()
+    answers
   });
 
-  resultBox.innerHTML=`
+  resultBox.innerHTML = `
     <h3>Result</h3>
-    Correct: ${correct}<br>
-    Wrong: ${wrong}<br>
-    Skipped: ${skipped}<br>
-    Time: ${Math.floor(durationSec/60)}m ${durationSec%60}s
+    ✔ Correct: ${correct}<br>
+    ✘ Wrong: ${wrong}<br>
+    ⏭ Skipped: ${skipped}<br>
+    ⏱ Time: ${Math.floor(durationSec/60)}m ${durationSec%60}s
   `;
 };
 </script>

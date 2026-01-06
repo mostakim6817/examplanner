@@ -1,25 +1,61 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Student Exam</title>
 
+<!-- ✅ MOBILE RESPONSIVE -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
 body{
-  font-family:Arial;
+  font-family: Arial, sans-serif;
   background:#f4f6f8;
-  padding:20px;
+  margin:0;
+  padding:12px;
 }
+
 .container{
   max-width:800px;
   margin:auto;
-  background:#fff;
-  padding:25px;
+  background:#ffffff;
+  padding:16px;
   border-radius:6px;
 }
-.question{margin-bottom:20px}
-.correct{color:green;font-weight:bold}
-.wrong{color:red;font-weight:bold}
+
+/* ---------- EXAM ---------- */
+.question{
+  margin-bottom:18px;
+}
+
+.question p{
+  font-size:16px;
+  line-height:1.4;
+}
+
+label{
+  display:block;
+  margin:6px 0;
+  font-size:15px;
+  cursor:pointer;
+}
+
+input[type="radio"]{
+  transform: scale(1.1);
+  margin-right:6px;
+}
+
+/* ---------- STATES ---------- */
+.correct{
+  color:green;
+  font-weight:bold;
+}
+
+.wrong{
+  color:red;
+  font-weight:bold;
+}
+
 .explanation{
   margin-top:6px;
   font-size:14px;
@@ -27,14 +63,42 @@ body{
   padding:8px;
   border-left:4px solid #0275d8;
 }
+
+/* ---------- RESULT ---------- */
 .result{
   background:#eef3ff;
-  padding:15px;
+  padding:12px;
   margin-top:20px;
   border-radius:4px;
+  font-size:15px;
 }
-.hidden{display:none}
-button{padding:8px 14px}
+
+.hidden{
+  display:none;
+}
+
+/* ---------- BUTTON ---------- */
+button{
+  padding:10px;
+  font-size:16px;
+  width:100%;
+  margin-top:10px;
+  border:none;
+  border-radius:4px;
+  background:#0275d8;
+  color:#fff;
+}
+
+/* 📱 MOBILE OPTIMIZATION */
+@media (max-width:600px){
+  body{padding:8px;}
+  .container{padding:14px;}
+  h2{font-size:20px;}
+  h3{font-size:18px;}
+  .question p{font-size:15px;}
+  label{font-size:14px;}
+  button{font-size:15px;}
+}
 </style>
 </head>
 
@@ -45,8 +109,7 @@ button{padding:8px 14px}
 <!-- NAME SCREEN -->
 <div id="nameBox">
   <h3>Enter Your Name</h3>
-  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
-  <br><br>
+  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px;font-size:16px">
   <button onclick="startExam()">Start Exam</button>
 </div>
 
@@ -56,6 +119,7 @@ button{padding:8px 14px}
   <p><b>Date:</b> <span id="examDate"></span></p>
 
   <form id="examForm"></form>
+
   <button id="submitBtn" onclick="submitExam()">Submit</button>
 
   <div class="result" id="resultBox"></div>
@@ -73,7 +137,7 @@ import {
   collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* FIREBASE CONFIG */
+/* 🔥 FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -86,16 +150,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* LOAD EXAM */
+/* ---------- LOAD EXAM ---------- */
 const examId = new URLSearchParams(location.search).get("exam");
 if(!examId){
-  document.body.innerHTML = "Invalid exam link";
+  document.body.innerHTML="Invalid exam link";
   throw "";
 }
 
 const snap = await getDoc(doc(db,"exams",examId));
 if(!snap.exists()){
-  document.body.innerHTML = "Exam not found";
+  document.body.innerHTML="Exam not found";
   throw "";
 }
 
@@ -103,10 +167,10 @@ const exam = snap.data();
 document.getElementById("examTitle").innerText = exam.title;
 document.getElementById("examDate").innerText = exam.date;
 
-let studentName = "";
-const form = document.getElementById("examForm");
+let studentName="";
+const form=document.getElementById("examForm");
 
-/* START EXAM */
+/* ---------- START EXAM ---------- */
 window.startExam = function(){
   studentName = document.getElementById("studentName").value.trim();
   if(!studentName){
@@ -118,55 +182,51 @@ window.startExam = function(){
   document.getElementById("examBox").classList.remove("hidden");
 
   exam.questions.forEach((q,i)=>{
-    let html = `<div class="question" data-id="${q.id}">
+    let html=`<div class="question" data-id="${q.id}">
       <p>${i+1}. ${q.question}</p>`;
     q.options.forEach((opt,idx)=>{
-      html += `
+      html+=`
         <label>
-          <input type="radio" name="${q.id}" value="${idx}"> ${opt}
-        </label><br>`;
+          <input type="radio" name="${q.id}" value="${idx}">
+          ${opt}
+        </label>`;
     });
-    html += `</div>`;
-    form.innerHTML += html;
+    html+=`</div>`;
+    form.innerHTML+=html;
   });
 };
 
-/* SUBMIT EXAM */
+/* ---------- SUBMIT EXAM ---------- */
 window.submitExam = async function(){
-  document.getElementById("submitBtn").disabled = true;
+  document.getElementById("submitBtn").disabled=true;
 
-  let correct = 0;
+  let correct=0;
 
   exam.questions.forEach(q=>{
-    const box = document.querySelector(`[data-id="${q.id}"]`);
-    const labels = box.querySelectorAll("label");
-    const sel = box.querySelector("input:checked");
+    const box=document.querySelector(`[data-id="${q.id}"]`);
+    const labels=box.querySelectorAll("label");
+    const sel=box.querySelector("input:checked");
 
     labels.forEach((l,i)=>{
-      if(i === q.correct){
-        l.classList.add("correct");
-      }
+      if(i===q.correct) l.classList.add("correct");
     });
 
     if(sel){
-      if(+sel.value === q.correct){
-        correct++;
-      }else{
-        sel.parentElement.classList.add("wrong");
-      }
+      if(+sel.value===q.correct) correct++;
+      else sel.parentElement.classList.add("wrong");
     }
 
     if(q.explanation){
-      const exp = document.createElement("div");
-      exp.className = "explanation";
-      exp.innerHTML = `<b>Explanation:</b> ${q.explanation}`;
+      const exp=document.createElement("div");
+      exp.className="explanation";
+      exp.innerHTML=`<b>Explanation:</b> ${q.explanation}`;
       box.appendChild(exp);
     }
   });
 
-  const total = exam.questions.length;
-  const wrong = total - correct;
-  const percent = ((correct/total)*100).toFixed(2);
+  const total=exam.questions.length;
+  const wrong=total-correct;
+  const percent=((correct/total)*100).toFixed(2);
 
   await addDoc(collection(db,"results"),{
     examId,
@@ -180,7 +240,7 @@ window.submitExam = async function(){
     link: location.href
   });
 
-  document.getElementById("resultBox").innerHTML = `
+  document.getElementById("resultBox").innerHTML=`
     <h3>Result</h3>
     Name: <b>${studentName}</b><br>
     Total: ${total}<br>

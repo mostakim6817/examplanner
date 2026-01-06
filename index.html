@@ -8,27 +8,57 @@
 <style>
 body{font-family:Arial;background:#f4f6f8;margin:0;padding:12px}
 .container{max-width:900px;margin:auto;background:#fff;padding:16px;border-radius:6px}
-.question{margin-bottom:16px}
-.option{display:block;margin:4px 0}
-.correct{color:#28a745;font-weight:bold}
-.wrong{color:#dc3545;font-weight:bold}
-.explanation{background:#f9f9f9;padding:8px;margin-top:6px;border-left:4px solid #0275d8}
-.result{background:#eef3ff;padding:12px;margin-top:20px;border-radius:4px}
 .hidden{display:none}
-button{padding:10px;font-size:16px;width:100%;border:none;border-radius:4px;background:#0275d8;color:#fff}
+
+.question{margin-bottom:18px}
+.question b{display:block;margin-bottom:6px}
+
+.option{margin:4px 0}
+.correct{color:green;font-weight:bold}
+.wrong{color:red;font-weight:bold}
+.skipped{color:#6c757d;font-style:italic}
+
+.explanation{
+  background:#f1f1f1;
+  padding:8px;
+  margin-top:6px;
+  border-left:4px solid #0275d8
+}
+
+button{
+  width:100%;
+  padding:10px;
+  font-size:16px;
+  border:none;
+  border-radius:4px;
+  background:#0275d8;
+  color:#fff;
+  margin-top:10px;
+  cursor:pointer
+}
+
 .timer{font-weight:bold;margin-bottom:10px}
+
+.result{
+  background:#eef3ff;
+  padding:12px;
+  border-radius:4px;
+  margin-top:16px
+}
 </style>
 </head>
 
 <body>
 <div class="container">
 
+<!-- NAME -->
 <div id="nameBox">
   <h3>Enter Your Name</h3>
   <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
   <button onclick="startExam()">Start Exam</button>
 </div>
 
+<!-- EXAM -->
 <div id="examBox" class="hidden">
   <h2 id="examTitle"></h2>
   <p>Date: <span id="examDate"></span></p>
@@ -36,7 +66,8 @@ button{padding:10px;font-size:16px;width:100%;border:none;border-radius:4px;back
 
   <form id="examForm"></form>
   <button id="submitBtn" onclick="submitExam()">Submit</button>
-  <div class="result" id="resultBox"></div>
+
+  <div id="resultBox" class="result"></div>
 </div>
 
 </div>
@@ -60,15 +91,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* LOAD EXAM */
 const examId = new URLSearchParams(location.search).get("exam");
-const snap = await getDoc(doc(db,"exams",examId));
-const exam = snap.data();
+if(!examId){
+  document.body.innerHTML="Invalid exam link";
+  throw "";
+}
 
+const examSnap = await getDoc(doc(db,"exams",examId));
+if(!examSnap.exists()){
+  document.body.innerHTML="Exam not found";
+  throw "";
+}
+
+const exam = examSnap.data();
 examTitle.innerText = exam.title;
 examDate.innerText = exam.date;
 
-let startTime, attemptRef, timerInt, remaining;
-const form = examForm;
+const form = document.getElementById("examForm");
+
+let attemptRef;
+let startTime;
+let timerInt=null;
+let remaining=0;
 
 /* START EXAM */
 window.startExam = async ()=>{
@@ -77,39 +122,40 @@ window.startExam = async ()=>{
 
   nameBox.classList.add("hidden");
   examBox.classList.remove("hidden");
+
   startTime = Date.now();
 
   attemptRef = await addDoc(collection(db,"attempts"),{
     examId,
     examTitle: exam.title,
     student: name,
-    startTime: new Date(),
-    status: "IN_PROGRESS"
+    status: "IN_PROGRESS",
+    startTime: new Date()
   });
 
   exam.questions.forEach((q,i)=>{
-    const div = document.createElement("div");
-    div.className = "question";
-    div.dataset.index = i;
-
-    div.innerHTML = `
-      <b>${i+1}. ${q.question}</b><br>
-      ${q.options.map((o,idx)=>`
-        <label class="option">
-          <input type="radio" name="q${i}" value="${idx}"> ${o}
-        </label>
-      `).join("")}
+    form.innerHTML += `
+      <div class="question" data-i="${i}">
+        <b>${i+1}. ${q.question}</b>
+        ${q.options.map((o,idx)=>`
+          <div class="option">
+            <label>
+              <input type="radio" name="q${i}" value="${idx}">
+              ${o}
+            </label>
+          </div>
+        `).join("")}
+      </div>
     `;
-    form.appendChild(div);
   });
 
   if(exam.enableTimer){
     remaining = exam.durationMin * 60;
     timerBox.classList.remove("hidden");
+    updateTimer();
     timerInt = setInterval(()=>{
       remaining--;
-      timerBox.innerText =
-        `⏱ ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")}`;
+      updateTimer();
       if(remaining<=0){
         clearInterval(timerInt);
         submitExam();
@@ -117,6 +163,11 @@ window.startExam = async ()=>{
     },1000);
   }
 };
+
+function updateTimer(){
+  timerBox.innerText =
+    `⏱ ${Math.floor(remaining/60)}:${(remaining%60).toString().padStart(2,"0")}`;
+}
 
 /* SUBMIT */
 window.submitExam = async ()=>{
@@ -127,51 +178,49 @@ window.submitExam = async ()=>{
   const answers=[];
 
   exam.questions.forEach((q,i)=>{
-    const box = document.querySelector(`[data-index="${i}"]`);
-    const radios = box.querySelectorAll("input[type=radio]");
-    let selected = null;
+    const box=document.querySelector(`[data-i="${i}"]`);
+    const sel=box.querySelector("input:checked");
+    const selected = sel ? Number(sel.value) : null;
 
-    radios.forEach(r=>{
-      if(r.checked) selected = Number(r.value);
-      r.disabled = true;
-    });
+    answers[i] = { selected };
 
-    if(selected===null) skipped++;
-    else if(selected===q.correct) correct++;
-    else wrong++;
-
-    answers.push({ selected });
-
-    radios.forEach(r=>{
-      const idx = Number(r.value);
-      const label = r.parentElement;
+    box.querySelectorAll(".option").forEach((op,idx)=>{
+      const label = op.querySelector("label");
 
       if(idx === q.correct){
         label.classList.add("correct");
-        label.innerHTML = "✔ " + label.textContent;
+        label.innerHTML = "✔ " + label.innerHTML;
       }
-      else if(idx === selected){
+
+      if(selected !== null && idx === selected && selected !== q.correct){
         label.classList.add("wrong");
-        label.innerHTML = "✘ " + label.textContent;
+        label.innerHTML = "✘ " + label.innerHTML;
       }
     });
 
+    if(selected === null){
+      skipped++;
+      box.innerHTML += `<div class="skipped">⏭ Skipped</div>`;
+    }
+    else if(selected === q.correct) correct++;
+    else wrong++;
+
     if(q.explanation){
-      const exp = document.createElement("div");
-      exp.className="explanation";
-      exp.innerText = q.explanation;
-      box.appendChild(exp);
+      box.innerHTML += `<div class="explanation">${q.explanation}</div>`;
     }
   });
 
+  const total = exam.questions.length;
+  const percent = ((correct/total)*100).toFixed(1);
   const durationSec = Math.floor((Date.now()-startTime)/1000);
 
   await updateDoc(attemptRef,{
     status:"COMPLETED",
-    correct, wrong, skipped,
-    total: exam.questions.length,
+    correct, wrong, skipped, total,
+    percent,
     durationSec,
-    answers
+    answers,
+    endTime: new Date()
   });
 
   resultBox.innerHTML = `
@@ -179,9 +228,11 @@ window.submitExam = async ()=>{
     ✔ Correct: ${correct}<br>
     ✘ Wrong: ${wrong}<br>
     ⏭ Skipped: ${skipped}<br>
+    % Score: ${percent}%<br>
     ⏱ Time: ${Math.floor(durationSec/60)}m ${durationSec%60}s
   `;
 };
 </script>
+
 </body>
 </html>

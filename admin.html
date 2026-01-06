@@ -6,60 +6,48 @@
 
 <style>
 body{
-    font-family: Arial, sans-serif;
-    background:#f2f4f7;
-    padding:20px;
+  font-family:Arial, sans-serif;
+  background:#f2f4f7;
+  padding:20px;
 }
 .container{
-    max-width:900px;
-    margin:auto;
-    background:#ffffff;
-    padding:25px;
-    border-radius:6px;
+  max-width:900px;
+  margin:auto;
+  background:#fff;
+  padding:25px;
+  border-radius:6px;
 }
 h2,h3{margin-top:0}
 textarea,input{
-    width:100%;
-    margin:6px 0;
-    padding:10px;
-    font-size:14px;
+  width:100%;
+  margin:6px 0;
+  padding:10px;
+  font-size:14px;
 }
 button{
-    padding:10px 16px;
-    margin-top:6px;
-    cursor:pointer;
-    border:none;
-    border-radius:4px;
+  padding:10px 16px;
+  margin-top:6px;
+  cursor:pointer;
+  border:none;
+  border-radius:4px;
 }
-.primary{
-    background:#0275d8;
-    color:#fff;
-}
-.copy{
-    background:#5cb85c;
-    color:#fff;
-}
+.primary{background:#0275d8;color:#fff}
+.danger{background:#d9534f;color:#fff}
+.copy{background:#5cb85c;color:#fff}
 .box{
-    background:#eef3ff;
-    padding:12px;
-    margin-top:12px;
-    border-radius:4px;
+  background:#eef3ff;
+  padding:12px;
+  margin-top:12px;
+  border-radius:4px;
 }
 .history{
-    background:#f9f9f9;
-    padding:10px;
-    margin-bottom:10px;
-    border-left:4px solid #0275d8;
+  background:#f9f9f9;
+  padding:10px;
+  margin-bottom:10px;
+  border-left:4px solid #0275d8;
 }
-.small{
-    font-size:13px;
-    color:#555;
-}
-hr{
-    border:none;
-    border-top:1px solid #ccc;
-    margin:20px 0;
-}
+.small{font-size:13px;color:#555}
+hr{border:none;border-top:1px solid #ccc;margin:20px 0}
 </style>
 </head>
 
@@ -68,11 +56,10 @@ hr{
 <div class="container">
 <h2>Admin Panel</h2>
 
+<!-- CREATE EXAM -->
 <h3>Create Exam</h3>
-
 <input id="title" placeholder="Exam Title">
 <input id="date" placeholder="Exam Date">
-
 <textarea id="questions" placeholder='Paste MCQ JSON here'></textarea>
 
 <button class="primary" onclick="createExam()">Create Exam</button>
@@ -81,8 +68,10 @@ hr{
 
 <hr>
 
+<!-- HISTORY -->
 <h3>Exam History</h3>
 <button class="primary" onclick="loadHistory()">Load History</button>
+<button class="danger" onclick="deleteHistory()">Delete All History</button>
 
 <div class="box" id="historyBox"></div>
 </div>
@@ -95,10 +84,12 @@ import {
   addDoc,
   getDocs,
   query,
-  orderBy
+  orderBy,
+  deleteDoc,
+  doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 🔥 YOUR FIREBASE CONFIG (ALREADY VERIFIED) */
+/* 🔥 FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -112,8 +103,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 /* ================= CREATE EXAM ================= */
-window.createExam = async function () {
-
+window.createExam = async function(){
   const title = document.getElementById("title").value.trim();
   const date = document.getElementById("date").value.trim();
   const qText = document.getElementById("questions").value.trim();
@@ -126,30 +116,24 @@ window.createExam = async function () {
   let qs;
   try{
     qs = JSON.parse(qText);
-  }catch(e){
-    alert("Invalid JSON format");
+  }catch{
+    alert("Invalid JSON");
     return;
   }
 
   const ref = await addDoc(collection(db,"exams"),{
-    title: title,
-    date: date,
-    questions: qs,
-    createdAt: new Date()
+    title, date, questions: qs, createdAt: new Date()
   });
 
-  /* ✅ GITHUB PAGES SAFE BASE URL */
   const base =
     window.location.origin +
     window.location.pathname.replace(/\/[^\/]*$/, "/");
 
   const examLink = `${base}index.html?exam=${ref.id}`;
 
-  document.getElementById("linkBox").innerHTML = `
+  linkBox.innerHTML = `
     <b>Exam Created Successfully</b><br><br>
-
     <input id="examLink" value="${examLink}" readonly>
-
     <br><br>
     <button class="copy" onclick="copyExamLink()">Copy Exam Link</button>
     <span class="small" id="copyMsg"></span>
@@ -160,27 +144,26 @@ window.createExam = async function () {
 window.copyExamLink = function(){
   const input = document.getElementById("examLink");
   input.select();
-  input.setSelectionRange(0, 99999);
+  input.setSelectionRange(0,99999);
   document.execCommand("copy");
   document.getElementById("copyMsg").innerText = " ✔ Copied";
 };
 
 /* ================= LOAD HISTORY ================= */
-window.loadHistory = async function () {
-
+window.loadHistory = async function(){
   const q = query(
     collection(db,"results"),
     orderBy("time","desc")
   );
-
   const snap = await getDocs(q);
 
-  let html = "";
+  let html="";
   snap.forEach(d=>{
     const r = d.data();
     html += `
       <div class="history">
         <b>${r.title}</b><br>
+        Student: <b>${r.student}</b><br>
         Score: ${r.correct}/${r.total} (${r.percent}%)<br>
         <span class="small">
           ${r.time.toDate().toLocaleString()}
@@ -190,11 +173,18 @@ window.loadHistory = async function () {
     `;
   });
 
-  if(html===""){
-    html = "No history found.";
-  }
+  historyBox.innerHTML = html || "No history found.";
+};
 
-  document.getElementById("historyBox").innerHTML = html;
+/* ================= DELETE HISTORY ================= */
+window.deleteHistory = async function(){
+  if(!confirm("Delete ALL exam history?")) return;
+
+  const snap = await getDocs(collection(db,"results"));
+  for(const d of snap.docs){
+    await deleteDoc(doc(db,"results",d.id));
+  }
+  historyBox.innerHTML = "All history deleted.";
 };
 </script>
 

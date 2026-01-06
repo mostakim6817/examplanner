@@ -3,53 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <title>Student Exam</title>
-
 <style>
-body{
-  font-family: Arial, sans-serif;
-  background:#f4f6f8;
-  padding:20px;
-}
-.container{
-  max-width:800px;
-  margin:auto;
-  background:#ffffff;
-  padding:25px;
-  border-radius:6px;
-}
-.question{
-  margin-bottom:20px;
-}
-.result{
-  background:#eef3ff;
-  padding:15px;
-  margin-top:20px;
-  border-radius:4px;
-}
+body{font-family:Arial;background:#f4f6f8;padding:20px}
+.container{max-width:800px;margin:auto;background:#fff;padding:25px;border-radius:6px}
+.question{margin-bottom:20px}
+.correct{color:green;font-weight:bold}
+.wrong{color:red;font-weight:bold}
+.result{background:#eef3ff;padding:15px;margin-top:20px;border-radius:4px}
+.hidden{display:none}
 </style>
 </head>
 
 <body>
 
 <div class="container">
-<h2 id="examTitle"></h2>
-<p><b>Date:</b> <span id="examDate"></span></p>
 
-<form id="examForm"></form>
+<!-- NAME SCREEN -->
+<div id="nameBox">
+  <h3>Enter Your Name</h3>
+  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
+  <br><br>
+  <button onclick="startExam()">Start Exam</button>
+</div>
 
-<button onclick="submitExam()">Submit</button>
+<!-- EXAM SCREEN -->
+<div id="examBox" class="hidden">
+  <h2 id="examTitle"></h2>
+  <p><b>Date:</b> <span id="examDate"></span></p>
 
-<div class="result" id="resultBox"></div>
+  <form id="examForm"></form>
+  <button id="submitBtn" onclick="submitExam()">Submit</button>
+
+  <div class="result" id="resultBox"></div>
+</div>
+
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore,
-  doc,
-  getDoc,
-  addDoc,
-  collection
+  getFirestore, doc, getDoc, addDoc, collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* 🔥 FIREBASE CONFIG */
@@ -65,72 +58,89 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* LOAD EXAM */
-const examId = new URLSearchParams(window.location.search).get("exam");
-
-if(!examId){
-  document.body.innerHTML = "<h2>Invalid exam link</h2>";
-  throw "";
-}
-
+const examId = new URLSearchParams(location.search).get("exam");
 const snap = await getDoc(doc(db,"exams",examId));
 
 if(!snap.exists()){
-  document.body.innerHTML = "<h2>Exam not found</h2>";
+  document.body.innerHTML="Invalid exam link";
   throw "";
 }
 
 const exam = snap.data();
-
 document.getElementById("examTitle").innerText = exam.title;
 document.getElementById("examDate").innerText = exam.date;
 
+let studentName = "";
 const form = document.getElementById("examForm");
 
-exam.questions.forEach((q,i)=>{
-  let html = `<div class="question">
-    <p>${i+1}. ${q.question}</p>`;
-  q.options.forEach((opt,idx)=>{
-    html += `
-      <label>
-        <input type="radio" name="${q.id}" value="${idx}">
-        ${opt}
-      </label><br>`;
-  });
-  html += `</div>`;
-  form.innerHTML += html;
-});
+/* START EXAM */
+window.startExam = function(){
+  studentName = document.getElementById("studentName").value.trim();
+  if(!studentName){
+    alert("Name required");
+    return;
+  }
+  document.getElementById("nameBox").classList.add("hidden");
+  document.getElementById("examBox").classList.remove("hidden");
 
-/* SUBMIT */
+  exam.questions.forEach((q,i)=>{
+    let html=`<div class="question" data-id="${q.id}">
+      <p>${i+1}. ${q.question}</p>`;
+    q.options.forEach((opt,idx)=>{
+      html+=`
+        <label>
+          <input type="radio" name="${q.id}" value="${idx}"> ${opt}
+        </label><br>`;
+    });
+    html+=`</div>`;
+    form.innerHTML+=html;
+  });
+};
+
+/* SUBMIT EXAM */
 window.submitExam = async function(){
+  document.getElementById("submitBtn").disabled = true;
+
   let correct = 0;
 
   exam.questions.forEach(q=>{
-    const sel = document.querySelector(
-      `input[name="${q.id}"]:checked`
-    );
-    if(sel && Number(sel.value) === q.correct){
-      correct++;
+    const box = document.querySelector(`[data-id="${q.id}"]`);
+    const labels = box.querySelectorAll("label");
+    const sel = box.querySelector("input:checked");
+
+    labels.forEach((l,i)=>{
+      if(i===q.correct) l.classList.add("correct");
+    });
+
+    if(sel){
+      if(+sel.value===q.correct){
+        correct++;
+      }else{
+        sel.parentElement.classList.add("wrong");
+      }
     }
   });
 
   const total = exam.questions.length;
+  const wrong = total - correct;
   const percent = ((correct/total)*100).toFixed(2);
 
   await addDoc(collection(db,"results"),{
-    examId: examId,
+    examId,
     title: exam.title,
-    correct: correct,
-    total: total,
-    percent: percent,
+    student: studentName,
+    correct, total, wrong, percent,
     time: new Date(),
-    link: window.location.href
+    link: location.href
   });
 
   document.getElementById("resultBox").innerHTML = `
     <h3>Result</h3>
-    Correct: ${correct} / ${total}<br>
-    Score: ${percent}%
+    Name: <b>${studentName}</b><br>
+    Total: ${total}<br>
+    Correct: ${correct}<br>
+    Wrong: ${wrong}<br>
+    <b>Score: ${percent}%</b>
   `;
 };
 </script>

@@ -2,46 +2,33 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Admin Panel – Exam Planner</title>
+<title>MCQ Exam</title>
 <style>
-body{font-family:Arial;background:#f2f4f7;padding:20px}
-.container{max-width:900px;margin:auto;background:#fff;padding:25px;border-radius:6px}
-textarea,input{width:100%;margin:6px 0;padding:10px;font-size:14px}
-button{padding:10px 16px;margin:6px 0;cursor:pointer}
-.primary{background:#0275d8;color:#fff;border:none}
-.box{background:#eef3ff;padding:12px;margin-top:10px;border-radius:4px}
-.history{background:#f9f9f9;padding:10px;margin-bottom:10px;border-left:4px solid #0275d8}
+body{font-family:Arial;background:#f4f6f8;padding:20px}
+.container{max-width:800px;margin:auto;background:#fff;padding:25px;border-radius:6px}
+.question{margin-bottom:20px}
+.result{background:#eef3ff;padding:15px;margin-top:20px}
 </style>
 </head>
 
 <body>
 <div class="container">
-<h2>Admin Panel</h2>
+<h2 id="title"></h2>
+<p><b>Date:</b> <span id="date"></span></p>
 
-<h3>Create Exam</h3>
-<input id="title" placeholder="Exam Title">
-<input id="date" placeholder="Exam Date">
+<form id="form"></form>
+<button onclick="submitExam()">Submit</button>
 
-<textarea id="questions" placeholder='Paste MCQ JSON here'></textarea>
-
-<button class="primary" onclick="createExam()">Create Exam</button>
-
-<div class="box" id="linkBox"></div>
-
-<hr>
-
-<h3>Exam History</h3>
-<button onclick="loadHistory()">Load History</button>
-<div class="box" id="historyBox"></div>
+<div class="result" id="result"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, getDocs, query, orderBy
+  getFirestore, doc, getDoc, addDoc, collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 🔥 YOUR FIREBASE CONFIG */
+/* 🔥 SAME FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -54,45 +41,54 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* CREATE EXAM */
-window.createExam = async function () {
-  const title = document.getElementById("title").value;
-  const date = document.getElementById("date").value;
-  const qs = JSON.parse(document.getElementById("questions").value);
+/* LOAD EXAM */
+const examId = new URLSearchParams(location.search).get("exam");
+const snap = await getDoc(doc(db,"exams",examId));
+if(!snap.exists()){
+  document.body.innerHTML="Invalid exam link";
+  throw "";
+}
 
-  const ref = await addDoc(collection(db,"exams"),{
-    title, date, questions: qs, createdAt: new Date()
+const exam = snap.data();
+title.innerText = exam.title;
+date.innerText = exam.date;
+
+exam.questions.forEach((q,i)=>{
+  let html=`<div class="question">
+  <p>${i+1}. ${q.question}</p>`;
+  q.options.forEach((o,idx)=>{
+    html+=`<label>
+      <input type="radio" name="${q.id}" value="${idx}"> ${o}
+    </label><br>`;
+  });
+  html+=`</div>`;
+  form.innerHTML+=html;
+});
+
+/* SUBMIT EXAM */
+window.submitExam = async function(){
+  let correct=0;
+  exam.questions.forEach(q=>{
+    const sel=document.querySelector(\`input[name="\${q.id}"]:checked\`);
+    if(sel && +sel.value===q.correct) correct++;
   });
 
-  const base = location.href.replace(/admin.*$/,'');
-  const link = `${base}index.html?exam=${ref.id}`;
+  const total=exam.questions.length;
+  const percent=((correct/total)*100).toFixed(2);
 
-  linkBox.innerHTML = `
-    <b>Exam Created Successfully</b><br><br>
-    <input value="${link}" readonly onclick="this.select()">
-  `;
-};
-
-/* LOAD HISTORY */
-window.loadHistory = async function () {
-  const q = query(collection(db,"results"), orderBy("time","desc"));
-  const snap = await getDocs(q);
-
-  let html="";
-  snap.forEach(d=>{
-    const r=d.data();
-    html+=`
-      <div class="history">
-        <b>${r.title}</b><br>
-        Score: ${r.correct}/${r.total} (${r.percent}%)<br>
-        Time: ${r.time.toDate().toLocaleString()}<br>
-        <input value="${r.link}" readonly onclick="this.select()">
-      </div>
-    `;
+  await addDoc(collection(db,"results"),{
+    examId,
+    title: exam.title,
+    correct, total, percent,
+    time: new Date(),
+    link: location.href
   });
-  historyBox.innerHTML=html;
+
+  result.innerHTML=\`
+    <b>Result</b><br>
+    Score: \${correct}/\${total} (\${percent}%)
+  \`;
 };
 </script>
 </body>
 </html>
-

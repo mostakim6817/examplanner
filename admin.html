@@ -6,12 +6,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body{font-family:Arial;background:#f2f4f7;margin:0;padding:12px}
-.container{max-width:1100px;margin:auto;background:#fff;padding:16px;border-radius:6px}
+.container{max-width:1200px;margin:auto;background:#fff;padding:16px;border-radius:6px}
 input,textarea{width:100%;padding:10px;margin:6px 0}
-button{padding:10px;width:100%;margin-top:6px;border:none;border-radius:4px;cursor:pointer}
+button{padding:8px 10px;margin-top:6px;border:none;border-radius:4px;cursor:pointer}
 .primary{background:#0275d8;color:#fff}
 .danger{background:#d9534f;color:#fff}
 .copy{background:#5cb85c;color:#fff}
+.gray{background:#6c757d;color:#fff}
 .box{background:#eef3ff;padding:12px;margin-top:12px;border-radius:4px}
 .card{background:#f9f9f9;padding:12px;margin-bottom:12px;border-left:4px solid #0275d8}
 .question{background:#fff;padding:8px;margin-top:6px}
@@ -19,6 +20,8 @@ button{padding:10px;width:100%;margin-top:6px;border:none;border-radius:4px;curs
 .wrong{color:red;font-weight:bold}
 .hidden{display:none}
 .explanation{background:#eee;padding:6px;border-left:4px solid #0275d8}
+.flex{display:flex;gap:6px;flex-wrap:wrap}
+small{color:#555}
 </style>
 </head>
 
@@ -27,6 +30,7 @@ button{padding:10px;width:100%;margin-top:6px;border:none;border-radius:4px;curs
 
 <h2>ADMIN PANEL</h2>
 
+<!-- CREATE EXAM -->
 <h3>Create Exam</h3>
 <input id="title" placeholder="Exam Title">
 <input id="date" placeholder="Exam Date">
@@ -38,22 +42,29 @@ button{padding:10px;width:100%;margin-top:6px;border:none;border-radius:4px;curs
 
 <hr>
 
+<!-- EXAM MANAGER -->
 <h3>Exam Manager</h3>
-<button class="primary" onclick="toggleExams()">Load Exams</button>
+<button class="primary" onclick="toggleExams()">Load / Refresh Exams</button>
 <div class="box hidden" id="examBox"></div>
 
 <hr>
 
-<h3>Exam Attempts</h3>
-<button class="primary" onclick="toggleAttempts()">Load / Refresh History</button>
+<!-- HISTORY -->
+<h3>Exam History</h3>
+<div class="flex">
+  <button class="primary" onclick="toggleHistory()">Load / Refresh History</button>
+  <button class="danger" onclick="resetHistory()">Delete All History</button>
+</div>
 <div class="box hidden" id="historyBox"></div>
 
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, getDoc }
-from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore, collection, addDoc, getDocs, getDoc,
+  updateDoc, deleteDoc, doc, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
@@ -67,79 +78,168 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-enableTimer.onchange=()=>duration.classList.toggle("hidden",!enableTimer.checked);
+enableTimer.onchange = ()=>duration.classList.toggle("hidden",!enableTimer.checked);
 
-window.createExam=async()=>{
-  if(!title.value||!date.value||!questions.value) return alert("All fields required");
-  const qs=JSON.parse(questions.value);
-  const ref=await addDoc(collection(db,"exams"),{
-    title:title.value,date:date.value,
+const base = location.origin + location.pathname.replace(/\/[^\/]*$/,"/");
+
+/* CREATE EXAM */
+window.createExam = async ()=>{
+  const qs = JSON.parse(questions.value);
+  const ref = await addDoc(collection(db,"exams"),{
+    title:title.value,
+    date:date.value,
     enableTimer:enableTimer.checked,
     durationMin:enableTimer.checked?Number(duration.value):null,
-    questions:qs,createdAt:new Date()
+    questions:qs,
+    createdAt:new Date()
   });
-  const base=location.origin+location.pathname.replace(/\/[^\/]*$/,"/");
-  linkBox.innerHTML=`<input id="l" value="${base}index.html?exam=${ref.id}" readonly>
-  <button class="copy" onclick="navigator.clipboard.writeText(l.value)">Copy Link</button>`;
+  const link = `${base}index.html?exam=${ref.id}`;
+  linkBox.innerHTML = `
+    <b>Exam Created</b><br>
+    <input id="newLink" value="${link}" readonly>
+    <button class="copy" onclick="copy('newLink')">Copy Link</button>
+  `;
 };
 
-window.toggleExams=async()=>{
+window.copy = id=>{
+  navigator.clipboard.writeText(document.getElementById(id).value);
+};
+
+/* EXAMS */
+window.toggleExams = async ()=>{
   examBox.classList.toggle("hidden");
-  if(!examBox.innerHTML){
-    const snap=await getDocs(collection(db,"exams"));
-    examBox.innerHTML=[...snap.docs].map(d=>{
-      const e=d.data();
-      return `<div class="card"><b>${e.title}</b>
-      <button class="primary" onclick="viewQuestions('${d.id}')">View Questions</button>
-      <div id="q_${d.id}" class="hidden"></div></div>`;
-    }).join("");
-  }
+  if(examBox.classList.contains("hidden")) return;
+
+  const snap = await getDocs(collection(db,"exams"));
+  examBox.innerHTML = "";
+
+  snap.forEach(d=>{
+    const e=d.data();
+    const link=`${base}index.html?exam=${d.id}`;
+
+    const card=document.createElement("div");
+    card.className="card";
+    card.innerHTML=`
+      <b>${e.title}</b><br>
+      Date: ${e.date}<br>
+      <small>${link}</small><br>
+      <div class="flex">
+        <button class="copy" onclick="navigator.clipboard.writeText('${link}')">Copy Link</button>
+        <button class="primary" onclick="viewQuestions('${d.id}')">View Questions</button>
+        <button class="danger" onclick="deleteExam('${d.id}')">Delete Exam</button>
+      </div>
+      <div id="q_${d.id}" class="hidden"></div>
+    `;
+    examBox.appendChild(card);
+  });
 };
 
-window.viewQuestions=async id=>{
+window.viewQuestions = async id=>{
   const box=document.getElementById("q_"+id);
   box.classList.toggle("hidden");
   if(box.innerHTML) return;
-  const e=(await getDoc(doc(db,"exams",id))).data();
-  box.innerHTML=e.questions.map((q,i)=>`
-    <div class="question"><b>${i+1}. ${q.question}</b><br>
-    ${q.options.map((o,idx)=>idx===q.correct?`<div class="correct">✔ ${o}</div>`:`<div>${o}</div>`).join("")}
-    ${q.explanation?`<div class="explanation">${q.explanation}</div>`:""}
-    </div>`).join("");
+
+  const snap=await getDoc(doc(db,"exams",id));
+  const exam=snap.data();
+
+  exam.questions.forEach((q,i)=>{
+    const qDiv=document.createElement("div");
+    qDiv.className="question";
+    qDiv.innerHTML=`
+      <b>${i+1}. ${q.question}</b><br>
+      ${q.options.map((o,idx)=>
+        idx===q.correct?`<div class="correct">✔ ${o}</div>`:`<div>${o}</div>`
+      ).join("")}
+      ${q.explanation?`<div class="explanation">${q.explanation}</div>`:""}
+      <button class="danger" onclick="deleteQuestion('${id}',${i})">Delete Question</button>
+    `;
+    box.appendChild(qDiv);
+  });
 };
 
-window.toggleAttempts=async()=>{
+window.deleteQuestion = async (examId,index)=>{
+  if(!confirm("Delete this question?")) return;
+  const ref=doc(db,"exams",examId);
+  const snap=await getDoc(ref);
+  const exam=snap.data();
+  exam.questions.splice(index,1);
+  await updateDoc(ref,{questions:exam.questions});
+  document.getElementById("q_"+examId).innerHTML="";
+  viewQuestions(examId);
+};
+
+window.deleteExam = async id=>{
+  if(!confirm("Delete entire exam?")) return;
+  await deleteDoc(doc(db,"exams",id));
+  toggleExams();
+};
+
+/* HISTORY */
+window.toggleHistory = async ()=>{
   historyBox.classList.toggle("hidden");
-  if(!historyBox.classList.contains("hidden")){
-    const snap=await getDocs(query(collection(db,"attempts"),orderBy("startTime","desc")));
-    historyBox.innerHTML=[...snap.docs].map(d=>{
-      const a=d.data();
-      return `<div class="card">
-      <b>${a.examTitle}</b><br>Student:${a.student}<br>Status:${a.status}
-      <button class="primary" onclick="viewAttempt('${d.id}','${a.examId}')">View Attempt</button>
-      <div id="a_${d.id}" class="hidden"></div></div>`;
-    }).join("");
-  }
+  if(historyBox.classList.contains("hidden")) return;
+
+  const snap=await getDocs(query(collection(db,"attempts"),orderBy("startTime","desc")));
+  historyBox.innerHTML="";
+
+  snap.forEach(d=>{
+    const a=d.data();
+    const link=`${base}index.html?exam=${a.examId}`;
+    const card=document.createElement("div");
+    card.className="card";
+    card.innerHTML=`
+      <b>${a.examTitle}</b><br>
+      Student: ${a.student}<br>
+      Status: ${a.status}<br>
+      Link: <small>${link}</small>
+      <div class="flex">
+        <button class="copy" onclick="navigator.clipboard.writeText('${link}')">Copy Exam Link</button>
+        <button class="primary" onclick="viewAttempt('${d.id}','${a.examId}')">View Attempt</button>
+        <button class="danger" onclick="deleteAttempt('${d.id}')">Delete</button>
+      </div>
+      <div id="a_${d.id}" class="hidden"></div>
+    `;
+    historyBox.appendChild(card);
+  });
 };
 
-window.viewAttempt=async(id,eid)=>{
-  const box=document.getElementById("a_"+id);
+window.viewAttempt = async (attemptId,examId)=>{
+  const box=document.getElementById("a_"+attemptId);
   box.classList.toggle("hidden");
   if(box.innerHTML) return;
-  const a=(await getDoc(doc(db,"attempts",id))).data();
-  const e=(await getDoc(doc(db,"exams",eid))).data();
-  box.innerHTML=e.questions.map((q,i)=>{
-    const ua=a.answers[i]?.selected??null;
-    return `<div class="question"><b>${i+1}. ${q.question}</b><br>
-    ${q.options.map((o,idx)=>{
-      if(idx===q.correct) return `<div class="correct">✔ ${o}</div>`;
-      if(idx===ua) return `<div class="wrong">✘ ${o}</div>`;
-      return `<div>${o}</div>`;
-    }).join("")}
-    ${ua===null?`<div class="wrong">Skipped</div>`:""}
-    ${q.explanation?`<div class="explanation">${q.explanation}</div>`:""}
-    </div>`;
-  }).join("");
+
+  const attempt=(await getDoc(doc(db,"attempts",attemptId))).data();
+  const exam=(await getDoc(doc(db,"exams",examId))).data();
+
+  exam.questions.forEach((q,i)=>{
+    const ua=attempt.answers?.[i]?.selected ?? null;
+    const div=document.createElement("div");
+    div.className="question";
+    div.innerHTML=`
+      <b>${i+1}. ${q.question}</b><br>
+      ${q.options.map((o,idx)=>{
+        if(idx===q.correct) return `<div class="correct">✔ ${o}</div>`;
+        if(idx===ua) return `<div class="wrong">✘ ${o}</div>`;
+        return `<div>${o}</div>`;
+      }).join("")}
+      ${ua===null?`<div class="wrong">Skipped</div>`:""}
+      ${q.explanation?`<div class="explanation">${q.explanation}</div>`:""}
+    `;
+    box.appendChild(div);
+  });
+};
+
+window.deleteAttempt = async id=>{
+  if(!confirm("Delete this attempt?")) return;
+  await deleteDoc(doc(db,"attempts",id));
+  toggleHistory();
+};
+
+window.resetHistory = async ()=>{
+  if(!confirm("Delete ALL history?")) return;
+  const snap=await getDocs(collection(db,"attempts"));
+  for(const d of snap.docs) await deleteDoc(doc(db,"attempts",d.id));
+  historyBox.innerHTML="";
 };
 </script>
 </body>

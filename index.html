@@ -24,12 +24,14 @@ button{padding:10px;font-size:16px;width:100%;margin-top:10px;border:none;border
 <body>
 <div class="container">
 
+<!-- NAME SCREEN -->
 <div id="nameBox">
   <h3>Enter Your Name</h3>
   <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
   <button onclick="startExam()">Start Exam</button>
 </div>
 
+<!-- EXAM SCREEN -->
 <div id="examBox" class="hidden">
   <h2 id="examTitle"></h2>
   <p><b>Date:</b> <span id="examDate"></span></p>
@@ -48,6 +50,7 @@ import {
   getFirestore, doc, getDoc, addDoc, updateDoc, collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -60,23 +63,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+/* LOAD EXAM */
 const examId = new URLSearchParams(location.search).get("exam");
+if(!examId){ document.body.innerHTML="Invalid exam link"; throw ""; }
+
 const examSnap = await getDoc(doc(db,"exams",examId));
 if(!examSnap.exists()){ document.body.innerHTML="Exam not found"; throw ""; }
 
 const exam = examSnap.data();
-examTitle.innerText = exam.title;
-examDate.innerText = exam.date;
+document.getElementById("examTitle").innerText = exam.title;
+document.getElementById("examDate").innerText = exam.date;
 
 let studentName="", attemptRef=null, startTime=null;
 let timerInt=null, remaining=0;
+const form = document.getElementById("examForm");
 
+/* START EXAM */
 window.startExam = async function(){
-  studentName = studentNameInput.value.trim();
+
+  studentName = document.getElementById("studentName").value.trim();
   if(!studentName){ alert("Name required"); return; }
 
-  nameBox.classList.add("hidden");
-  examBox.classList.remove("hidden");
+  document.getElementById("nameBox").classList.add("hidden");
+  document.getElementById("examBox").classList.remove("hidden");
 
   startTime = Date.now();
 
@@ -95,37 +104,45 @@ window.startExam = async function(){
       html+=`<label><input type="radio" name="${q.id}" value="${idx}"> ${o}</label>`;
     });
     html+=`</div>`;
-    examForm.innerHTML+=html;
+    form.innerHTML+=html;
   });
 
   if(exam.enableTimer){
     remaining = exam.durationMin * 60;
-    timerBox.classList.remove("hidden");
+    document.getElementById("timerBox").classList.remove("hidden");
     updateTimer();
     timerInt = setInterval(()=>{
       remaining--;
       updateTimer();
-      if(remaining<=0){ clearInterval(timerInt); submitExam(); }
+      if(remaining<=0){
+        clearInterval(timerInt);
+        submitExam();
+      }
     },1000);
   }
 };
 
 function updateTimer(){
   const m=Math.floor(remaining/60), s=remaining%60;
-  timerBox.innerText = `⏱ Time Left: ${m}:${s.toString().padStart(2,"0")}`;
+  document.getElementById("timerBox").innerText =
+    `⏱ Time Left: ${m}:${s.toString().padStart(2,"0")}`;
 }
 
+/* SUBMIT */
 window.submitExam = async function(){
-  submitBtn.disabled=true;
+  document.getElementById("submitBtn").disabled=true;
   if(timerInt) clearInterval(timerInt);
 
   let correct=0;
+
   exam.questions.forEach(q=>{
     const box=document.querySelector(`[data-id="${q.id}"]`);
     const labels=box.querySelectorAll("label");
     const sel=box.querySelector("input:checked");
 
-    labels.forEach((l,i)=>{ if(i===q.correct) l.classList.add("correct"); });
+    labels.forEach((l,i)=>{
+      if(i===q.correct) l.classList.add("correct");
+    });
 
     if(sel){
       if(+sel.value===q.correct) correct++;
@@ -151,7 +168,7 @@ window.submitExam = async function(){
     endTime:new Date()
   });
 
-  resultBox.innerHTML=`
+  document.getElementById("resultBox").innerHTML=`
     <h3>Result</h3>
     Name: <b>${studentName}</b><br>
     Score: ${correct}/${total} (${percent}%)<br>
@@ -159,5 +176,6 @@ window.submitExam = async function(){
   `;
 };
 </script>
+
 </body>
 </html>

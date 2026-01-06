@@ -2,33 +2,103 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>MCQ Exam</title>
+<title>Admin Panel – Exam Planner</title>
+
 <style>
-body{font-family:Arial;background:#f4f6f8;padding:20px}
-.container{max-width:800px;margin:auto;background:#fff;padding:25px;border-radius:6px}
-.question{margin-bottom:20px}
-.result{background:#eef3ff;padding:15px;margin-top:20px}
+body{
+    font-family: Arial, sans-serif;
+    background:#f2f4f7;
+    padding:20px;
+}
+.container{
+    max-width:900px;
+    margin:auto;
+    background:#ffffff;
+    padding:25px;
+    border-radius:6px;
+}
+h2,h3{margin-top:0}
+textarea,input{
+    width:100%;
+    margin:6px 0;
+    padding:10px;
+    font-size:14px;
+}
+button{
+    padding:10px 16px;
+    margin-top:6px;
+    cursor:pointer;
+    border:none;
+    border-radius:4px;
+}
+.primary{
+    background:#0275d8;
+    color:#fff;
+}
+.copy{
+    background:#5cb85c;
+    color:#fff;
+}
+.box{
+    background:#eef3ff;
+    padding:12px;
+    margin-top:12px;
+    border-radius:4px;
+}
+.history{
+    background:#f9f9f9;
+    padding:10px;
+    margin-bottom:10px;
+    border-left:4px solid #0275d8;
+}
+.small{
+    font-size:13px;
+    color:#555;
+}
+hr{
+    border:none;
+    border-top:1px solid #ccc;
+    margin:20px 0;
+}
 </style>
 </head>
 
 <body>
+
 <div class="container">
-<h2 id="title"></h2>
-<p><b>Date:</b> <span id="date"></span></p>
+<h2>Admin Panel</h2>
 
-<form id="form"></form>
-<button onclick="submitExam()">Submit</button>
+<h3>Create Exam</h3>
 
-<div class="result" id="result"></div>
+<input id="title" placeholder="Exam Title">
+<input id="date" placeholder="Exam Date">
+
+<textarea id="questions" placeholder='Paste MCQ JSON here'></textarea>
+
+<button class="primary" onclick="createExam()">Create Exam</button>
+
+<div class="box" id="linkBox"></div>
+
+<hr>
+
+<h3>Exam History</h3>
+<button class="primary" onclick="loadHistory()">Load History</button>
+
+<div class="box" id="historyBox"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, addDoc, collection
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 🔥 SAME FIREBASE CONFIG */
+/* 🔥 YOUR FIREBASE CONFIG (ALREADY VERIFIED) */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -41,54 +111,92 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* LOAD EXAM */
-const examId = new URLSearchParams(location.search).get("exam");
-const snap = await getDoc(doc(db,"exams",examId));
-if(!snap.exists()){
-  document.body.innerHTML="Invalid exam link";
-  throw "";
-}
+/* ================= CREATE EXAM ================= */
+window.createExam = async function () {
 
-const exam = snap.data();
-title.innerText = exam.title;
-date.innerText = exam.date;
+  const title = document.getElementById("title").value.trim();
+  const date = document.getElementById("date").value.trim();
+  const qText = document.getElementById("questions").value.trim();
 
-exam.questions.forEach((q,i)=>{
-  let html=`<div class="question">
-  <p>${i+1}. ${q.question}</p>`;
-  q.options.forEach((o,idx)=>{
-    html+=`<label>
-      <input type="radio" name="${q.id}" value="${idx}"> ${o}
-    </label><br>`;
-  });
-  html+=`</div>`;
-  form.innerHTML+=html;
-});
+  if(!title || !date || !qText){
+    alert("All fields required");
+    return;
+  }
 
-/* SUBMIT EXAM */
-window.submitExam = async function(){
-  let correct=0;
-  exam.questions.forEach(q=>{
-    const sel=document.querySelector(\`input[name="\${q.id}"]:checked\`);
-    if(sel && +sel.value===q.correct) correct++;
+  let qs;
+  try{
+    qs = JSON.parse(qText);
+  }catch(e){
+    alert("Invalid JSON format");
+    return;
+  }
+
+  const ref = await addDoc(collection(db,"exams"),{
+    title: title,
+    date: date,
+    questions: qs,
+    createdAt: new Date()
   });
 
-  const total=exam.questions.length;
-  const percent=((correct/total)*100).toFixed(2);
+  /* ✅ GITHUB PAGES SAFE BASE URL */
+  const base =
+    window.location.origin +
+    window.location.pathname.replace(/\/[^\/]*$/, "/");
 
-  await addDoc(collection(db,"results"),{
-    examId,
-    title: exam.title,
-    correct, total, percent,
-    time: new Date(),
-    link: location.href
+  const examLink = `${base}index.html?exam=${ref.id}`;
+
+  document.getElementById("linkBox").innerHTML = `
+    <b>Exam Created Successfully</b><br><br>
+
+    <input id="examLink" value="${examLink}" readonly>
+
+    <br><br>
+    <button class="copy" onclick="copyExamLink()">Copy Exam Link</button>
+    <span class="small" id="copyMsg"></span>
+  `;
+};
+
+/* ================= COPY LINK ================= */
+window.copyExamLink = function(){
+  const input = document.getElementById("examLink");
+  input.select();
+  input.setSelectionRange(0, 99999);
+  document.execCommand("copy");
+  document.getElementById("copyMsg").innerText = " ✔ Copied";
+};
+
+/* ================= LOAD HISTORY ================= */
+window.loadHistory = async function () {
+
+  const q = query(
+    collection(db,"results"),
+    orderBy("time","desc")
+  );
+
+  const snap = await getDocs(q);
+
+  let html = "";
+  snap.forEach(d=>{
+    const r = d.data();
+    html += `
+      <div class="history">
+        <b>${r.title}</b><br>
+        Score: ${r.correct}/${r.total} (${r.percent}%)<br>
+        <span class="small">
+          ${r.time.toDate().toLocaleString()}
+        </span><br><br>
+        <input value="${r.link}" readonly onclick="this.select()">
+      </div>
+    `;
   });
 
-  result.innerHTML=\`
-    <b>Result</b><br>
-    Score: \${correct}/\${total} (\${percent}%)
-  \`;
+  if(html===""){
+    html = "No history found.";
+  }
+
+  document.getElementById("historyBox").innerHTML = html;
 };
 </script>
+
 </body>
 </html>

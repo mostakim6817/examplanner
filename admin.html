@@ -1,33 +1,104 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Admin Panel – Exam Planner</title>
 
+<!-- ✅ RESPONSIVE -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-body{font-family:Arial;background:#f2f4f7;padding:20px}
-.container{max-width:900px;margin:auto;background:#fff;padding:25px;border-radius:6px}
-textarea,input{width:100%;margin:6px 0;padding:10px}
-button{padding:10px 16px;margin:6px 4px 0 0;cursor:pointer;border:none;border-radius:4px}
+body{
+  font-family: Arial, sans-serif;
+  background:#f2f4f7;
+  margin:0;
+  padding:12px;
+}
+
+.container{
+  max-width:900px;
+  margin:auto;
+  background:#fff;
+  padding:16px;
+  border-radius:6px;
+}
+
+h2,h3{
+  margin-top:0;
+}
+
+textarea,input{
+  width:100%;
+  margin:6px 0;
+  padding:10px;
+  font-size:15px;
+}
+
+button{
+  padding:10px;
+  font-size:16px;
+  width:100%;
+  margin-top:8px;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+}
+
 .primary{background:#0275d8;color:#fff}
 .danger{background:#d9534f;color:#fff}
 .copy{background:#5cb85c;color:#fff}
-.box{background:#eef3ff;padding:12px;margin-top:12px;border-radius:4px}
-.history{background:#f9f9f9;padding:10px;margin-bottom:10px;border-left:4px solid #0275d8}
-.small{font-size:13px;color:#555}
-hr{border:none;border-top:1px solid #ccc;margin:20px 0}
+
+.box{
+  background:#eef3ff;
+  padding:12px;
+  margin-top:12px;
+  border-radius:4px;
+  font-size:14px;
+}
+
+.history{
+  background:#f9f9f9;
+  padding:12px;
+  margin-bottom:12px;
+  border-left:4px solid #0275d8;
+  border-radius:4px;
+}
+
+.small{
+  font-size:13px;
+  color:#555;
+}
+
+hr{
+  border:none;
+  border-top:1px solid #ccc;
+  margin:18px 0;
+}
+
+/* 📱 MOBILE OPTIMIZATION */
+@media (max-width:600px){
+  body{padding:8px;}
+  .container{padding:14px;}
+  h2{font-size:20px;}
+  h3{font-size:18px;}
+  button{font-size:15px;}
+}
 </style>
 </head>
 
 <body>
+
 <div class="container">
 
 <h2>Admin Panel</h2>
 
+<!-- CREATE EXAM -->
 <h3>Create Exam</h3>
+
 <input id="title" placeholder="Exam Title">
 <input id="date" placeholder="Exam Date">
-<textarea id="questions" placeholder="Paste MCQ JSON here"></textarea>
+
+<textarea id="questions" rows="6" placeholder="Paste MCQ JSON here"></textarea>
 
 <button class="primary" onclick="createExam()">Create Exam</button>
 
@@ -35,7 +106,9 @@ hr{border:none;border-top:1px solid #ccc;margin:20px 0}
 
 <hr>
 
+<!-- HISTORY -->
 <h3>Exam History</h3>
+
 <button class="primary" onclick="loadHistory()">Load History</button>
 <button class="danger" onclick="resetHistory()">Delete / Reset History</button>
 
@@ -56,7 +129,7 @@ import {
   doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* FIREBASE CONFIG */
+/* 🔥 FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -69,7 +142,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* CREATE EXAM */
+/* ---------- CREATE EXAM ---------- */
 window.createExam = async function(){
   const title = document.getElementById("title").value.trim();
   const date = document.getElementById("date").value.trim();
@@ -81,8 +154,12 @@ window.createExam = async function(){
   }
 
   let qs;
-  try{ qs = JSON.parse(qText); }
-  catch{ alert("Invalid JSON"); return; }
+  try{
+    qs = JSON.parse(qText);
+  }catch{
+    alert("Invalid JSON");
+    return;
+  }
 
   const ref = await addDoc(collection(db,"exams"),{
     title, date, questions: qs, createdAt: new Date()
@@ -92,29 +169,31 @@ window.createExam = async function(){
     location.origin +
     location.pathname.replace(/\/[^\/]*$/, "/");
 
-  const link = `${base}index.html?exam=${ref.id}`;
+  const examLink = `${base}index.html?exam=${ref.id}`;
 
   linkBox.innerHTML = `
-    <b>Exam Created</b><br><br>
-    <input id="examLink" value="${link}" readonly>
-    <br><br>
+    <b>Exam Created Successfully</b><br><br>
+    <input id="examLink" value="${examLink}" readonly>
     <button class="copy" onclick="copyLink()">Copy Exam Link</button>
     <span class="small" id="copyMsg"></span>
   `;
 };
 
+/* ---------- COPY LINK ---------- */
 window.copyLink = function(){
-  const i = document.getElementById("examLink");
-  i.select(); document.execCommand("copy");
-  document.getElementById("copyMsg").innerText = " ✔ Copied";
+  const input = document.getElementById("examLink");
+  input.select();
+  input.setSelectionRange(0,99999);
+  document.execCommand("copy");
+  document.getElementById("copyMsg").innerText=" ✔ Copied";
 };
 
-/* LOAD HISTORY */
+/* ---------- LOAD HISTORY ---------- */
 window.loadHistory = async function(){
   const q = query(collection(db,"results"), orderBy("time","desc"));
   const snap = await getDocs(q);
 
-  let html = "";
+  let html="";
   snap.forEach(d=>{
     const r = d.data();
     html += `
@@ -131,7 +210,7 @@ window.loadHistory = async function(){
   historyBox.innerHTML = html || "No history found.";
 };
 
-/* RESET HISTORY */
+/* ---------- RESET HISTORY ---------- */
 window.resetHistory = async function(){
   if(!confirm("Delete ALL exam history?")) return;
 
@@ -139,7 +218,7 @@ window.resetHistory = async function(){
   for(const d of snap.docs){
     await deleteDoc(doc(db,"results",d.id));
   }
-  historyBox.innerHTML = "All history deleted.";
+  historyBox.innerHTML="All history deleted.";
 };
 </script>
 

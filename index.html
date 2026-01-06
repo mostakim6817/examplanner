@@ -3,125 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <title>Student Exam</title>
-
-<!-- ✅ MOBILE RESPONSIVE -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body{
-  font-family: Arial, sans-serif;
-  background:#f4f6f8;
-  margin:0;
-  padding:12px;
-}
-
-.container{
-  max-width:800px;
-  margin:auto;
-  background:#ffffff;
-  padding:16px;
-  border-radius:6px;
-}
-
-/* ---------- EXAM ---------- */
-.question{
-  margin-bottom:18px;
-}
-
-.question p{
-  font-size:16px;
-  line-height:1.4;
-}
-
-label{
-  display:block;
-  margin:6px 0;
-  font-size:15px;
-  cursor:pointer;
-}
-
-input[type="radio"]{
-  transform: scale(1.1);
-  margin-right:6px;
-}
-
-/* ---------- STATES ---------- */
-.correct{
-  color:green;
-  font-weight:bold;
-}
-
-.wrong{
-  color:red;
-  font-weight:bold;
-}
-
-.explanation{
-  margin-top:6px;
-  font-size:14px;
-  background:#f9f9f9;
-  padding:8px;
-  border-left:4px solid #0275d8;
-}
-
-/* ---------- RESULT ---------- */
-.result{
-  background:#eef3ff;
-  padding:12px;
-  margin-top:20px;
-  border-radius:4px;
-  font-size:15px;
-}
-
-.hidden{
-  display:none;
-}
-
-/* ---------- BUTTON ---------- */
-button{
-  padding:10px;
-  font-size:16px;
-  width:100%;
-  margin-top:10px;
-  border:none;
-  border-radius:4px;
-  background:#0275d8;
-  color:#fff;
-}
-
-/* 📱 MOBILE OPTIMIZATION */
-@media (max-width:600px){
-  body{padding:8px;}
-  .container{padding:14px;}
-  h2{font-size:20px;}
-  h3{font-size:18px;}
-  .question p{font-size:15px;}
-  label{font-size:14px;}
-  button{font-size:15px;}
-}
+body{font-family:Arial;background:#f4f6f8;margin:0;padding:12px}
+.container{max-width:800px;margin:auto;background:#fff;padding:16px;border-radius:6px}
+.question{margin-bottom:18px}
+.question p{font-size:16px}
+label{display:block;margin:6px 0}
+.correct{color:green;font-weight:bold}
+.wrong{color:red;font-weight:bold}
+.explanation{margin-top:6px;font-size:14px;background:#f9f9f9;padding:8px;border-left:4px solid #0275d8}
+.result{background:#eef3ff;padding:12px;margin-top:20px;border-radius:4px}
+.hidden{display:none}
+button{padding:10px;font-size:16px;width:100%;margin-top:10px;border:none;border-radius:4px;background:#0275d8;color:#fff}
+.timer{font-weight:bold;margin-bottom:10px}
 </style>
 </head>
 
 <body>
-
 <div class="container">
 
-<!-- NAME SCREEN -->
 <div id="nameBox">
   <h3>Enter Your Name</h3>
-  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px;font-size:16px">
+  <input id="studentName" placeholder="Your name" style="width:100%;padding:10px">
   <button onclick="startExam()">Start Exam</button>
 </div>
 
-<!-- EXAM SCREEN -->
 <div id="examBox" class="hidden">
   <h2 id="examTitle"></h2>
   <p><b>Date:</b> <span id="examDate"></span></p>
+  <div id="timerBox" class="timer hidden"></div>
 
   <form id="examForm"></form>
-
   <button id="submitBtn" onclick="submitExam()">Submit</button>
-
   <div class="result" id="resultBox"></div>
 </div>
 
@@ -130,14 +45,9 @@ button{
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore,
-  doc,
-  getDoc,
-  addDoc,
-  collection
+  getFirestore, doc, getDoc, addDoc, updateDoc, collection
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* 🔥 FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyBWdAho4vhY3yjhWohl7lr8iJ0TKCGVU3Y",
   authDomain: "exam-planner-61152.firebaseapp.com",
@@ -150,66 +60,72 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* ---------- LOAD EXAM ---------- */
 const examId = new URLSearchParams(location.search).get("exam");
-if(!examId){
-  document.body.innerHTML="Invalid exam link";
-  throw "";
-}
+const examSnap = await getDoc(doc(db,"exams",examId));
+if(!examSnap.exists()){ document.body.innerHTML="Exam not found"; throw ""; }
 
-const snap = await getDoc(doc(db,"exams",examId));
-if(!snap.exists()){
-  document.body.innerHTML="Exam not found";
-  throw "";
-}
+const exam = examSnap.data();
+examTitle.innerText = exam.title;
+examDate.innerText = exam.date;
 
-const exam = snap.data();
-document.getElementById("examTitle").innerText = exam.title;
-document.getElementById("examDate").innerText = exam.date;
+let studentName="", attemptRef=null, startTime=null;
+let timerInt=null, remaining=0;
 
-let studentName="";
-const form=document.getElementById("examForm");
+window.startExam = async function(){
+  studentName = studentNameInput.value.trim();
+  if(!studentName){ alert("Name required"); return; }
 
-/* ---------- START EXAM ---------- */
-window.startExam = function(){
-  studentName = document.getElementById("studentName").value.trim();
-  if(!studentName){
-    alert("Name required");
-    return;
-  }
+  nameBox.classList.add("hidden");
+  examBox.classList.remove("hidden");
 
-  document.getElementById("nameBox").classList.add("hidden");
-  document.getElementById("examBox").classList.remove("hidden");
+  startTime = Date.now();
+
+  attemptRef = await addDoc(collection(db,"attempts"),{
+    examId,
+    examTitle: exam.title,
+    student: studentName,
+    status: "IN_PROGRESS",
+    startTime: new Date()
+  });
 
   exam.questions.forEach((q,i)=>{
     let html=`<div class="question" data-id="${q.id}">
       <p>${i+1}. ${q.question}</p>`;
-    q.options.forEach((opt,idx)=>{
-      html+=`
-        <label>
-          <input type="radio" name="${q.id}" value="${idx}">
-          ${opt}
-        </label>`;
+    q.options.forEach((o,idx)=>{
+      html+=`<label><input type="radio" name="${q.id}" value="${idx}"> ${o}</label>`;
     });
     html+=`</div>`;
-    form.innerHTML+=html;
+    examForm.innerHTML+=html;
   });
+
+  if(exam.enableTimer){
+    remaining = exam.durationMin * 60;
+    timerBox.classList.remove("hidden");
+    updateTimer();
+    timerInt = setInterval(()=>{
+      remaining--;
+      updateTimer();
+      if(remaining<=0){ clearInterval(timerInt); submitExam(); }
+    },1000);
+  }
 };
 
-/* ---------- SUBMIT EXAM ---------- */
+function updateTimer(){
+  const m=Math.floor(remaining/60), s=remaining%60;
+  timerBox.innerText = `⏱ Time Left: ${m}:${s.toString().padStart(2,"0")}`;
+}
+
 window.submitExam = async function(){
-  document.getElementById("submitBtn").disabled=true;
+  submitBtn.disabled=true;
+  if(timerInt) clearInterval(timerInt);
 
   let correct=0;
-
   exam.questions.forEach(q=>{
     const box=document.querySelector(`[data-id="${q.id}"]`);
     const labels=box.querySelectorAll("label");
     const sel=box.querySelector("input:checked");
 
-    labels.forEach((l,i)=>{
-      if(i===q.correct) l.classList.add("correct");
-    });
+    labels.forEach((l,i)=>{ if(i===q.correct) l.classList.add("correct"); });
 
     if(sel){
       if(+sel.value===q.correct) correct++;
@@ -217,39 +133,31 @@ window.submitExam = async function(){
     }
 
     if(q.explanation){
-      const exp=document.createElement("div");
-      exp.className="explanation";
-      exp.innerHTML=`<b>Explanation:</b> ${q.explanation}`;
-      box.appendChild(exp);
+      const e=document.createElement("div");
+      e.className="explanation";
+      e.innerHTML=`<b>Explanation:</b> ${q.explanation}`;
+      box.appendChild(e);
     }
   });
 
   const total=exam.questions.length;
-  const wrong=total-correct;
   const percent=((correct/total)*100).toFixed(2);
+  const durationSec=Math.floor((Date.now()-startTime)/1000);
 
-  await addDoc(collection(db,"results"),{
-    examId,
-    title: exam.title,
-    student: studentName,
-    correct,
-    total,
-    wrong,
-    percent,
-    time: new Date(),
-    link: location.href
+  await updateDoc(attemptRef,{
+    status:"COMPLETED",
+    correct,total,percent,
+    durationSec,
+    endTime:new Date()
   });
 
-  document.getElementById("resultBox").innerHTML=`
+  resultBox.innerHTML=`
     <h3>Result</h3>
     Name: <b>${studentName}</b><br>
-    Total: ${total}<br>
-    Correct: ${correct}<br>
-    Wrong: ${wrong}<br>
-    <b>Score: ${percent}%</b>
+    Score: ${correct}/${total} (${percent}%)<br>
+    Time Taken: ${Math.floor(durationSec/60)} min ${durationSec%60} sec
   `;
 };
 </script>
-
 </body>
 </html>
